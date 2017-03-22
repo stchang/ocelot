@@ -3,7 +3,7 @@
 (provide for for/list for/and for/hash
          in-list in-naturals
          when unless
-         ~v format
+         ~v format fprintf
          length first second foldl
          +
          hash-ref tup
@@ -93,18 +93,34 @@
 
 ;; Formatting values as strings
 
+(begin-for-syntax
+  ;; format-string-matches? : String [Listof Any] -> Bool
+  (define (format-string-matches? fmt vals)
+    (with-handlers ([exn:fail? (λ (e) #false)])
+      (apply format fmt vals)
+      #true))
+  )
+
 (define ~v (unsafe-assign-type ro:~v : (C→ Any CString)))
 
 (define-typed-syntax format
   [(_ fmt:str v:expr ...) ≫
    #:fail-unless
-   (with-handlers ([exn:fail? (λ (e) #false)])
-     (apply format (syntax-e #'fmt) (syntax->datum #'[v ...]))
-     #true)
+   (format-string-matches? (syntax-e #'fmt) (syntax->datum #'[v ...]))
    "wrong number of arguments for format string"
    [⊢ [v ≫ v- ⇐ Any] ...]
    --------
    [⊢ (ro:format fmt v- ...) ⇒ CString]])
+
+(define-typed-syntax fprintf
+  [(_ out:expr fmt:str v:expr ...) ≫
+   [⊢ out ≫ out- ⇐ COutputPort]
+   #:fail-unless
+   (format-string-matches? (syntax-e #'fmt) (syntax->datum #'[v ...]))
+   "wrong number of arguments for format string"
+   [⊢ [v ≫ v- ⇐ Any] ...]
+   --------
+   [⊢ (ro:fprintf out- fmt v- ...) ⇒ CVoid]])
 
 ;; ----------------------------------------------------------------------------
 

@@ -1,6 +1,7 @@
 #lang turnstile
 
 (provide CVoid Void
+         COutputPort
          CHashof
          CSequenceof
          C→ C→* Ccase->
@@ -35,6 +36,8 @@
 
 (define-base-type CVoid)
 (define-named-type-alias Void (add-predm (U CVoid) void?))
+
+(define-base-type COutputPort)
 
 (define-type-constructor CHashof #:arity = 2)
 (define-type-constructor CSequenceof #:arity = 1)
