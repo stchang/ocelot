@@ -1,6 +1,6 @@
 #lang turnstile
 
-(provide define λ apply
+(provide : define λ apply
          (rename-out [app #%app])
          unsafe-assign-type unsafe-define/assign-type)
 
@@ -23,6 +23,34 @@
 
 ;; ----------------------------------------------------------------------------
 
+;; Declaring Types before Definitions
+
+(begin-for-syntax
+  (define type-decl-internal-id 'type-decl-internal-id)
+  (define-syntax-class id/type-decl
+    #:attributes [internal-id type]
+    [pattern x:id
+      ;; expand x in such a way that an unbound identifier
+      ;; won't be an error
+      #:with x* (local-expand #'x 'expression #false)
+      #:attr internal-id (syntax-property #'x* type-decl-internal-id)
+      #:when (attribute internal-id)
+      #:with type (typeof #'x*)]))
+
+(define-typed-syntax :
+  #:datum-literals [:]
+  [(_ x:id : τ) ≫
+   #:with x- (generate-temporary #'x)
+   --------
+   [≻ (define-syntax- x
+        (make-variable-like-transformer
+         (set-stx-prop/preserved
+          (⊢ x- : τ)
+          type-decl-internal-id
+          (syntax-local-introduce #'x-))))]])
+
+;; ----------------------------------------------------------------------------
+
 ;; Define and Lambda
 
 ;; This new version of define handles keyword arguments,
@@ -32,11 +60,14 @@
 (define-typed-syntax define
   #:datum-literals [: →]
   [(_ x:id : τ e:expr) ≫
-   #:with x- (generate-temporary #'x)
    --------
    [≻ (begin-
-        (define-syntax- x (make-variable-like-transformer (⊢ x- : τ)))
-        (ro:define x- (ann e : τ)))]]
+        (: x : τ)
+        (define x e))]]
+  [(_ x:id/type-decl e:expr) ≫
+   #:with x- (syntax-local-introduce #'x.internal-id)
+   --------
+   [≻ (ro:define x- (ann e : x.type))]]
   [(_ x:id e:expr) ≫
    #:with x- (generate-temporary #'x)
    [⊢ e ≫ e- ⇒ τ]
@@ -69,7 +100,13 @@
                   (ann body* : τ_out)))
    --------
    [≻ (define f : (C→* [τ_in ...] [kw/τ ... ...] #:rest τ_rst τ_out)
-        lam)]])
+        lam)]]
+  ;; function with type declaration beforehand
+  [(_ (f:id/type-decl . (~and args (:id ... (~seq :keyword [:id :expr]) ...))) body ...+) ≫
+   --------
+   [≻ (define f
+        (λ args (begin body ...)))]]
+  )
 
 ;; This new version of λ handles keyword arguments.
 

@@ -33,9 +33,14 @@
         (list (syntax-property super struct-transformer-binding)
               (syntax-property super struct-instance-type)
               (syntax-property super struct-field-types)))])
+
+  ;; -----------------------------------
+  ;; Struct Options
+
   (define-splicing-syntax-class struct-options
     [pattern (~seq #:transparent refl:struct-opt-reflection-name)
       #:with [opt- ...] #'[#:transparent refl.opt- ...]])
+
   (define-splicing-syntax-class struct-opt-reflection-name
     [pattern (~seq)
       #:with [opt- ...] #'[]]
@@ -50,6 +55,8 @@
                          (~fail #:unless (typecheck? given expected)
                                 (typecheck-fail-msg/1 expected given #'sym-expr))))
       #:with [opt- ...] #'[#:reflection-name sym-expr-]])
+
+  ;; -----------------------------------
   )
 
 (define-syntax-parser struct
@@ -59,18 +66,13 @@
    #:with name? (format-id #'name "~a?" #'name #:source #'name)
    #:with [name-field ...]
    (for/list ([field (in-list (syntax->list #'[field ...]))])
-     (format-id #'name "~a-~a" #'name field))
+     (format-id #'name "~a-~a" #'name field #:source #'name #:props #'name))
    #:with [name* internal-name name?* name-field* ...]
-   (generate-temporaries #'[name name name? field ...])
+   ((make-syntax-introducer) #'[name name name? name-field ...])
    #'(begin-
        (define-base-type CName)
        (define-named-type-alias Name (add-predm (U CName) name?))
-       (splicing-local [(ro:struct name [field ...] opts.opt- ...)]
-         (define- name* name)
-         (define- name?* name?)
-         (define- name-field* name-field)
-         ...
-         (define-syntax internal-name (make-rename-transformer #'name)))
+       (ro:struct name* [field ...] opts.opt- ...)
        (define-struct-name name name* internal-name CName [τ ...])
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))
@@ -82,16 +84,11 @@
    #:with name? (format-id #'name "~a?" #'name #:source #'name)
    #:with [name-field ...]
    (for/list ([field (in-list (syntax->list #'[field ...]))])
-     (format-id #'name "~a-~a" #'name field))
+     (format-id #'name "~a-~a" #'name field #:source #'name #:props #'name))
    #:with [name* internal-name name?* name-field* ...]
-   (generate-temporaries #'[name name name? field ...])
+   ((make-syntax-introducer) #'[name name name? name-field ...])
    #'(begin-
-       (splicing-local [(ro:struct name super.id- [field ...] opts.opt- ...)]
-         (define- name* name)
-         (define- name?* name?)
-         (define- name-field* name-field)
-         ...
-         (define-syntax internal-name (make-rename-transformer #'name)))
+       (ro:struct name* super.id- [field ...] opts.opt- ...)
        (define-struct-name name name* internal-name super.τ_inst [super.τ_fld ... τ ...])
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))

@@ -52,16 +52,25 @@
 
 ;; ARGUMENT CHECKS -------------------------------------------------------------
 
-(define (check-args [op : CSymbol]
-                    [args : (CListof Node/Expr)]
-                    [type? : (→ Any Bool)]
-                    [#:same-arity? same-arity? : Bool #f]
-                    [#:arity arity : Any #f]
-                    [#:min-length min-length : CNat 2]
-                    [#:max-length max-length : (U Bool Nat) #f]
-                    [#:join? join? : Bool #f]
-                    [#:domain? domain? : Bool #f]
-                    [#:range? range? : Bool #f]) → CVoid
+(: check-args : (C→ CSymbol (CListof Node/Expr) (→ Any Bool)
+                    [#:same-arity? Bool]
+                    [#:arity Any]
+                    [#:min-length CNat]
+                    [#:max-length (U Bool Nat)]
+                    [#:join? Bool]
+                    [#:domain? Bool]
+                    [#:range? Bool]
+                    CVoid))
+(define (check-args op
+                    args
+                    type?
+                    #:same-arity? [same-arity? #f]
+                    #:arity [arity #f]
+                    #:min-length [min-length 2]
+                    #:max-length [max-length #f]
+                    #:join? [join? #f]
+                    #:domain? [domain? #f]
+                    #:range? [range? #f])
   (when (< (length args) min-length)
     (raise-arguments-error op "not enough arguments" "required" min-length "got" (length args)))
   (unless (false? max-length)
@@ -94,14 +103,15 @@
       (raise-arguments-error op "first argument must have arity 1")))
   (void))
 
+(: join-arity : (C→* [] [] #:rest (CListof Nat) Int))
 ;; join-arity does not always produce an arity, sometimes
 ;; it can produce a negative integer
-(define join-arity : (C→* [] [] #:rest (CListof Nat) Int)
-  (λ e 
+(define join-arity
+  (λ e
     (@- (sum e) (@* 2 (@- (length e) 1)))))
 
-(define (sum [e : (CListof Nat)]) → Nat
-  (foldl @+ 0 e))
+(: sum : (C→ (CListof Nat) Nat))
+(define (sum e) (foldl @+ 0 e))
 
 ;; -- operators ----------------------------------------------------------------
 
