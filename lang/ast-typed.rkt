@@ -103,16 +103,6 @@
       (raise-arguments-error op "first argument must have arity 1")))
   (void))
 
-(: join-arity : (C→* [] [] #:rest (CListof Nat) Int))
-;; join-arity does not always produce an arity, sometimes
-;; it can produce a negative integer
-(define join-arity
-  (λ e
-    (@- (sum e) (@* 2 (@- (length e) 1)))))
-
-(: sum : (C→ (CListof Nat) Nat))
-(define (sum e) (foldl @+ 0 e))
-
 ;; -- operators ----------------------------------------------------------------
 
 (struct node/expr/op node/expr ([children : (CListof Any)]) #:transparent)
@@ -130,7 +120,7 @@
                (begin
                  (check-args 'id e node/expr? checks ...)
                  (let ([arities (for/list ([a (in-list e)]) (node/expr-arity a))])
-                   (name (apply arity arities) e))))))))]))
+                   (name (assert-type (apply arity arities) : Nat) e))))))))]))
 
 (define get-first : (C→* [] [] #:rest (CListof Nat) Nat)
   (λ e (first e)))
@@ -144,17 +134,16 @@
 (define-op/combine &)
 
 (define-syntax-rule (define-op/cross id)
-  (define-expr-op id add-arities))
+  (define-expr-op id @+))
 (define-op/cross ->)
 
-(define add-arities : (C→* [] [] #:rest (CListof Nat) Nat)
-  (λ e (foldl @+ 0 e)))
-
-#|
 (define-expr-op ~ get-first #:min-length 1 #:max-length 1 #:arity 2)
 
+(: join-arity : (C→* [] [] #:rest (CListof Nat) Int))
+;; join-arity does not always produce an arity, sometimes
+;; it can produce a negative integer
 (define join-arity
-  (lambda e (@- (apply @+ e) (@* 2 (@- (length e) 1)))))
+  (λ e (@- (apply @+ e) (@* 2 (@- (length e) 1)))))
 (define-syntax-rule (define-op/join id)
   (define-expr-op id join-arity #:join? #t))
 (define-op/join join)
@@ -162,13 +151,17 @@
 (define-expr-op <: get-second #:max-length 2 #:domain? #t)
 (define-expr-op :> get-first  #:max-length 2 #:range? #t)
 
-(define-syntax-rule (define-op/closure id @op)
-  (define-expr-op id (const 2) #:min-length 1 #:max-length 1 #:arity 2 #:lift @op))
-(define-op/closure ^ #f)
-(define-op/closure * @*)
+(define-syntax-rule (define-op/closure id)
+  (define-expr-op id (const 2) #:min-length 1 #:max-length 1 #:arity 2))
+(define-op/closure ^)
+(define-op/closure *)
+
+(define (const [v : Nat]) → (C→* [] [] #:rest (CListof Nat) Nat)
+  (λ args v))
 
 ;; -- comprehensions -----------------------------------------------------------
 
+#|
 (struct node/expr/comprehension node/expr (decls formula)
   #:methods gen:custom-write
   [(define (write-proc self port mode)

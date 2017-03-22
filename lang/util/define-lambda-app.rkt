@@ -277,17 +277,16 @@
    --------
    [⊢ (apply- f- lst-) ⇒ τ_out]]
   [(_ f:expr lst:expr) ≫
-   [⊢ f ≫ f- ⇒ (~Ccase->
-                         _
-                         ...
-                         (~C→*/internal (~MandArgs)
-                                        (~OptKws)
-                                        (~RestArg τ_rst)
-                                        τ_out)
-                         _
-                         ...)]
-   #:do [(printf "expecting list type ~a\n" #'τ_rst)]
-   [⊢ lst ≫ lst- ⇐ τ_rst]
+   [⊢ f ≫ f- ⇒ (~Ccase-> τ_f ...)]
+   [⊢ lst ≫ lst- ⇒ τ_lst]
+   #:with τ_out
+   (for/or ([τ_f (in-list (stx-map coerce-to-C→* #'[τ_f ...]))])
+     (syntax-parse τ_f
+       [(~C→*/internal (~MandArgs) (~OptKws) (~RestArg τ_rst*) τ_out)
+        (and (typecheck? #'τ_lst #'τ_rst*)
+             #'τ_out)]
+       [_ #false]))
+   #:fail-unless (syntax-e #'τ_out) "none of the cases matched"
    --------
    [⊢ (apply- f- lst-) ⇒ τ_out]])
 
