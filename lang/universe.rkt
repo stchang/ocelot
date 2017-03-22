@@ -1,17 +1,29 @@
-#lang rosette
+#lang s-exp turnstile/examples/rosette/rosette2
 
-(require (prefix-in $ racket))
+(require "util/provide.rkt"
+         "util/define-lambda-app.rkt"
+         "util/struct.rkt"
+         "util/extra-types.rkt"
+         "util/extra-forms.rkt")
+
 (provide (except-out (all-defined-out) universe)
          (rename-out [make-universe universe]))
 
-
 ;; universe --------------------------------------------------------------------
 
-(struct universe (atoms inverse) #:transparent)
-(define (make-universe atoms)
-  (let ([inverse (for/hash ([(a i) (in-indexed atoms)]) (values a i))])
+(struct universe
+  ([atoms : (CListof CSymbol)] [inverse : (C→ CSymbol CNat)])
+  #:type-name Universe
+  #:transparent)
+
+(define (make-universe [atoms : (CListof CSymbol)]) → Universe
+  (let ([inverse (for/hash ([a (in-list atoms)]
+                            [i (in-naturals)])
+                   (tup a i))])
     (universe
      atoms
-     (lambda (t) (hash-ref inverse t)))))
-(define (universe-size universe)
+     (λ ([t : CSymbol]) (hash-ref inverse t)))))
+
+(define (universe-size [universe : CUniverse]) → CNat
   (length (universe-atoms universe)))
+
