@@ -2,11 +2,11 @@
 
 (provide for for/list for/and for/hash
          in-list in-naturals
-         when unless
+         and when unless
          ~v format fprintf
-         length first second foldl
+         length first rest second map foldl
          +
-         hash-ref tup
+         begin0 hash-ref tup proj
          raise-argument-error raise-arguments-error void
          define-syntax define-syntax-rule
          (rename-out [begin- splicing-begin]))
@@ -17,7 +17,7 @@
                     Ccase-> ~Ccase->)
          (prefix-in tro: turnstile/examples/rosette/rosette2)
          (only-in turnstile/examples/stlc+tup
-                  tup)
+                  tup proj)
          (prefix-in ro: rosette)
          (except-in "define-lambda-app.rkt" #%app)
          "extra-types.rkt")
@@ -76,18 +76,28 @@
 ;; Conditionals
 
 (define-typed-syntax when
-  [(_ condition:expr body:expr) ≫
+  [(_ condition:expr body:expr ...+) ≫
    [⊢ condition ≫ condition- ⇐ Bool]
-   [⊢ body ≫ body- ⇒ τ]
+   [⊢ (begin body ...) ≫ body- ⇒ τ]
    --------
    [⊢ (ro:when condition- body-) ⇒ (U τ Void)]])
 
 (define-typed-syntax unless
-  [(_ condition:expr body:expr) ≫
+  [(_ condition:expr body:expr ...+) ≫
    [⊢ condition ≫ condition- ⇐ Bool]
-   [⊢ body ≫ body- ⇒ τ]
+   [⊢ (begin body ...) ≫ body- ⇒ τ]
    --------
    [⊢ (ro:unless condition- body-) ⇒ (U τ Void)]])
+
+(define-typed-syntax and
+  [(_ e:expr ...) ≫
+   [⊢ [e ≫ e- (⇐ Bool) (⇒ τ_e)] ...]
+   #:with [[CBool* _] ...] #`[[#,((current-type-eval) #'CBool) τ_e] ...]
+   #:with τ_out (if (typechecks? #'[τ_e ...] #'[CBool* ...])
+                    #'CBool
+                    #'Bool)
+   --------
+   [⊢ (ro:and e- ...) ⇒ τ_out]])
 
 ;; ----------------------------------------------------------------------------
 
@@ -138,11 +148,32 @@
    --------
    [⊢ (ro:first lst-) ⇒ τ]])
 
+(define-typed-syntax rest
+  [(_ lst:expr) ≫
+   [⊢ lst ≫ lst- ⇒ (~CListof τ)]
+   --------
+   [⊢ (ro:rest lst-) ⇒ (CListof τ)]])
+
 (define-typed-syntax second
   [(_ lst:expr) ≫
    [⊢ lst ≫ lst- ⇒ (~CListof τ)]
    --------
    [⊢ (ro:second lst-) ⇒ τ]])
+
+(define-typed-syntax map
+  [(_ f:expr lst:expr) ⇐ (~CListof Y) ≫
+   [⊢ f ≫ f- ⇒ (~C→ X Y*)]
+   ; Y* must be usable as Y, because the Y* value will be used
+   ; as an element the return value
+   [Y* τ⊑ Y #:for f]
+   [⊢ lst ≫ lst- ⇐ (CListof X)]
+   --------
+   [⊢ (ro:map f- lst-)]]
+  [(_ f:expr lst:expr) ≫
+   [⊢ f ≫ f- ⇒ (~C→ X Y)]
+   [⊢ lst ≫ lst- ⇐ (CListof X)]
+   --------
+   [⊢ (ro:map f- lst-) ⇒ (CListof Y)]])
 
 (define-typed-syntax foldl
   [(_ f:expr base:expr lst:expr) ⇐ Y ≫
@@ -220,6 +251,13 @@
 ;; ----------------------------------------------------------------------------
 
 ;; Other
+
+(define-typed-syntax begin0
+  [(_ e0:expr e:expr ...) ≫
+   [⊢ e0 ≫ e0- ⇒ τ]
+   [⊢ [e ≫ e- ⇐ Void] ...]
+   --------
+   [⊢ (ro:begin0 e0- e- ...) ⇒ τ]])
 
 (define-typed-syntax hash-ref
   [(_ hsh:expr key:expr) ≫

@@ -8,7 +8,7 @@
                     #%app
                     C→ ~C→
                     Ccase-> ~Ccase->)
-         (prefix-in ro: (only-in rosette/safe define λ #%app))
+         (prefix-in ro: (only-in rosette/safe define λ #%app #%top))
          "extra-types.rkt")
 
 (begin-for-syntax
@@ -27,6 +27,7 @@
 
 (begin-for-syntax
   (define type-decl-internal-id 'type-decl-internal-id)
+  (define type-decl-internal-id-for 'type-decl-internal-id-for)
   (define-syntax-class id/type-decl
     #:attributes [internal-id type]
     [pattern x:id
@@ -45,9 +46,12 @@
    [≻ (define-syntax- x
         (make-variable-like-transformer
          (set-stx-prop/preserved
-          (⊢ x- : τ)
-          type-decl-internal-id
-          (syntax-local-introduce #'x-))))]])
+          (set-stx-prop/preserved
+           (⊢ x- : τ)
+           type-decl-internal-id
+           (syntax-local-introduce #'x-))
+          type-decl-internal-id-for
+          (syntax-local-introduce #'x))))]])
 
 ;; ----------------------------------------------------------------------------
 
@@ -184,6 +188,8 @@
                          (~NoRestArg)
                          τ_out)
    (coerce-to-C→* #'τ_f)
+   #:fail-unless (stx-length=? #'[a ...] #'[τ_a ...])
+   "wrong number of by-position arguments"
    #:do [(define kws/τs*
            (for/list ([kw* (in-list (syntax->datum #'[kw* ...]))]
                       [τ* (in-list (syntax->list #'[τ_kw* ...]))])

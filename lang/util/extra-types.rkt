@@ -6,6 +6,7 @@
          CSequenceof
          C→ C→* Ccase->
          C→*/internal- MandArgs- OptKws- KwArg- RestArg- NoRestArg-
+         C×
          (for-syntax ~CHashof
                      ~CSequenceof
                      ~C→ ~C→*/internal ~Ccase->
@@ -15,6 +16,7 @@
                      ~CListof))
 
 (require (only-in turnstile/examples/stlc+tup
+                  [× C×]
                   [~× ~C×])
          (only-in turnstile/examples/stlc+union+case
                   [case-> Ccase->/internal] [~case-> ~Ccase->])
@@ -23,6 +25,7 @@
                   U
                   CListof ~CListof
                   CSymbol
+                  CUnit
                   [C→ C→/normal] [~C→ ~C→/normal] [C→? C→/normal?]))
 
 (begin-for-syntax
@@ -34,7 +37,7 @@
 (define-syntax-parser add-predm
   [(_ stx pred) (add-pred #'stx #'pred)])
 
-(define-base-type CVoid)
+(define-named-type-alias CVoid CUnit)
 (define-named-type-alias Void (add-predm (U CVoid) void?))
 
 (define-base-type COutputPort)

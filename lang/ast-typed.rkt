@@ -4,6 +4,7 @@
          "util/define-lambda-app.rkt"
          "util/extra-forms.rkt"
          "util/struct.rkt"
+         "util/generic-interfaces.rkt"
          "util/require.rkt"
          "util/provide.rkt"
          (prefix-in @ "util/extra-forms.rkt")
@@ -21,7 +22,7 @@
                     node/expr-arity
                     check-args
                     + -
-                    not
+                    not and or
                     ))
 (provide (all-from-out "ast-untyped.rkt") + -)
 
@@ -50,9 +51,15 @@
   #:type-name Node/Expr
   #:transparent)
 
+;; FORMULAS --------------------------------------------------------------------
+
+(struct node/formula ()
+  #:type-name Node/Formula
+  #:transparent)
+
 ;; ARGUMENT CHECKS -------------------------------------------------------------
 
-(: check-args : (C→ CSymbol (CListof Node/Expr) (→ Any Bool)
+(: check-args : (C→ CSymbol (CListof Any) (→ Any Bool)
                     [#:same-arity? Bool]
                     [#:arity Any]
                     [#:min-length CNat]
@@ -81,31 +88,47 @@
     (unless (type? a)
       (raise-argument-error op (~v type?) a))
     (unless (false? arity)
+      (unless (node/expr? a)
+        (raise-argument-error op "relation expression" a))
       ;; TODO: use occurence typing instead of assert-type
-      (unless (equal? (node/expr-arity a) arity)
+      (unless (equal? (node/expr-arity (assert-type a : Node/Expr)) arity)
         (raise-argument-error op (format "expression with arity ~v" arity) a))))
   (when same-arity?
-    (let ([arity (node/expr-arity (first args))])
+    (unless (node/expr? (first args))
+      (raise-argument-error op "relation expression" (first args)))
+    (let ([arity (node/expr-arity (assert-type (first args) : Node/Expr))])
       (for ([a (in-list args)])
-        (unless (equal? (node/expr-arity a) arity)
+        (unless (node/expr? a)
+          (raise-argument-error op "relation expression" a))
+        (unless (equal? (node/expr-arity (assert-type a : Node/Expr))
+                        arity)
           (raise-arguments-error op "arguments must have same arity"
-                                 "got" arity "and" (node/expr-arity a))))))
+                                 "got" arity
+                                 "and" (node/expr-arity
+                                        (assert-type a : Node/Expr)))))))
   (when join?
     (when (<= (apply join-arity (for/list ([a (in-list args)])
-                                  (node/expr-arity a)))
+                                  (node/expr-arity
+                                   (assert-type a : Node/Expr))))
               0)
       (raise-arguments-error op "join would create a relation of arity 0")))
   (when range?
-    (unless (equal? (node/expr-arity (second args)) 1)
+    (unless (node/expr? (second args))
+      (raise-argument-error op "relation expression" (second args)))
+    (unless (equal? (node/expr-arity (assert-type (second args) : Node/Expr)) 1)
       (raise-arguments-error op "second argument must have arity 1")))
   (when domain?
-    (unless (equal? (node/expr-arity (first args)) 1)
+    (unless (node/expr? (first args))
+      (raise-argument-error op "relation expression" (first args)))
+    (unless (equal? (node/expr-arity (assert-type (first args) : Node/Expr)) 1)
       (raise-arguments-error op "first argument must have arity 1")))
   (void))
 
 ;; -- operators ----------------------------------------------------------------
 
-(struct node/expr/op node/expr ([children : (CListof Any)]) #:transparent)
+(struct node/expr/op node/expr ([children : (CListof Node/Expr)])
+  #:use-super-type
+  #:transparent)
 
 ;; TODO: figure out how to deal with operation arity
 (define-syntax (define-expr-op stx)
@@ -114,7 +137,8 @@
      (with-syntax ([name (format-id #'id "node/expr/op/~a" #'id)])
        (quasisyntax/loc stx
          (splicing-begin
-           (struct name node/expr/op () #:transparent #:reflection-name 'id)
+           (struct name node/expr/op () #:use-super-type #:transparent
+             #:reflection-name 'id)
            (define id : (C→* [] [] #:rest (CListof Node/Expr) Node/Expr)
              (λ e
                (begin
@@ -161,20 +185,25 @@
 
 ;; -- comprehensions -----------------------------------------------------------
 
-#|
-(struct node/expr/comprehension node/expr (decls formula)
+(struct node/expr/comprehension node/expr
+  ([decls : (CListof (C× Any Node/Expr))] [formula : Node/Formula])
+  #:use-super-type
+  #:transparent ; TODO: opaque structs?
   #:methods gen:custom-write
   [(define (write-proc self port mode)
     (fprintf port "(comprehension ~a ~a ~a)" 
                   (node/expr-arity self) 
                   (node/expr/comprehension-decls self)
                   (node/expr/comprehension-formula self)))])
+
+(: comprehension : (C→ (CListof (C× Any Node/Expr)) Node/Formula Node/Expr))
 (define (comprehension decls formula)
-  (for ([e (map cdr decls)])
-    (unless (node/expr? e)
-      (raise-argument-error 'set "expr?" e))
-    (unless (equal? (node/expr-arity e) 1)
-      (raise-argument-error 'set "decl of arity 1" e)))
+  (for ([decl (in-list decls)])
+    (let ([e (proj decl 1)])
+      (unless (node/expr? e)
+        (raise-argument-error 'set "expr?" e))
+      (unless (equal? (node/expr-arity e) 1)
+        (raise-argument-error 'set "decl of arity 1" e))))
   (unless (node/formula? formula)
     (raise-argument-error 'set "formula?" formula))
   (node/expr/comprehension (length decls) decls formula))
@@ -190,35 +219,52 @@
 
 ;; -- relations ----------------------------------------------------------------
 
-(struct node/expr/relation node/expr (name)
+(struct node/expr/relation node/expr ([name : CString])
+  #:use-super-type
+  #:transparent
   #:methods gen:equal+hash
   [(define (equal-proc a b equal?-recur)
-     ($and (equal?-recur (node/expr-arity a) (node/expr-arity b))
-           (equal?-recur (node/expr/relation-name  a) (node/expr/relation-name b))))
+     (and (equal?-recur (node/expr-arity a) (node/expr-arity b))
+          (equal?-recur (node/expr/relation-name  a) (node/expr/relation-name b))))
    (define (hash-proc a hash-recur)
-     ($+ (hash-recur (node/expr/relation-name a))
+     (@+ (hash-recur (node/expr/relation-name a))
          (hash-recur (node/expr-arity a))))
    (define (hash2-proc a hash2-recur)
-     ($+ (hash2-recur (node/expr/relation-name a))
+     (@+ (hash2-recur (node/expr/relation-name a))
          (hash2-recur (node/expr-arity a))))]
   #:methods gen:custom-write
   [(define (write-proc self port mode)
-     (match-define (node/expr/relation arity name) self)
-     (fprintf port "(relation ~a ~v)" arity name))])
-(define next-name 0)
-(define (declare-relation arity [name #f])
-  (let ([name (if (false? name) 
-                  (begin0 (format "r~v" next-name) (set! next-name (add1 next-name)))
-                  name)])
+     (fprintf port "(relation ~a ~v)"
+              (node/expr-arity self)
+              (node/expr/relation-name self)))])
+
+(: declare-relation : (C→ CNat CString CNode/Expr))
+(define (declare-relation arity name)
+  (let ([name name])
     (node/expr/relation arity name)))
+
+(: next-name : CNat)
+(define next-name 0)
+
+(: declare-anonymous-relation : (C→ CNat CNode/Expr))
+(define (declare-anonymous-relation arity)
+  (let ([name (begin0 (format "r~v" next-name)
+                      (set! next-name (add1 next-name)))])
+    (node/expr/relation arity name)))
+
+(: relation-arity : (C→ Node/Expr Nat))
 (define (relation-arity rel)
   (node/expr-arity rel))
+
+(: relation-name : (C→ Node/Expr String))
 (define (relation-name rel)
   (node/expr/relation-name rel))
 
 ;; -- constants ----------------------------------------------------------------
 
-(struct node/expr/constant node/expr (type) #:transparent
+(struct node/expr/constant node/expr ([type : CSymbol])
+  #:use-super-type
+  #:transparent
   #:methods gen:custom-write
   [(define (write-proc self port mode)
      (fprintf port "~v" (node/expr/constant-type self)))])
@@ -226,86 +272,76 @@
 (define univ (node/expr/constant 1 'univ))
 (define iden (node/expr/constant 2 'iden))
 
-
-;; FORMULAS --------------------------------------------------------------------
-
-(struct node/formula () #:transparent)
-
 ;; -- operators ----------------------------------------------------------------
 
-(struct node/formula/op node/formula (children) #:transparent)
+(struct node/formula/op node/formula
+  ([children : (CListof Any)])
+  #:use-super-type
+  #:transparent)
 
 (define-syntax (define-formula-op stx)
   (syntax-case stx ()
-    [(_ id type? checks ... #:lift @op)
+    [(_ id Type type? checks ...)
      (with-syntax ([name (format-id #'id "node/formula/op/~a" #'id)])
        (syntax/loc stx
-         (begin
-           (struct name node/formula/op () #:transparent #:reflection-name 'id)
-           (define id
-             (lambda e
-               (if ($and @op (for/and ([a e]) ($not (type? a))))
-                   (apply @op e)
-                   (begin
-                     (check-args 'id e type? checks ...)
-                     (name e))))))))]
-    [(_ id type? checks ...)
-     (syntax/loc stx
-       (define-formula-op id type? checks ... #:lift #f))]))
+         (splicing-begin
+           (struct name node/formula/op () #:use-super-type #:transparent
+             #:reflection-name 'id)
+           (define id : (C→* [] [] #:rest (CListof Type) Node/Formula)
+             (λ e
+               (begin
+                 (check-args 'id e type? checks ...)
+                 (name e)))))))]))
 
-(define-formula-op in node/expr? #:same-arity? #t #:max-length 2)
-(define-formula-op = node/expr? #:same-arity? #t #:max-length 2 #:lift @=)
+(define-formula-op in Node/Expr node/expr? #:same-arity? #t #:max-length 2)
+(define-formula-op = Node/Expr node/expr? #:same-arity? #t #:max-length 2)
 
-(define-formula-op && node/formula? #:min-length 1 #:lift @&&)
-(define-formula-op || node/formula? #:min-length 1 #:lift @||)
-(define-formula-op => node/formula? #:min-length 2 #:max-length 2 #:lift @=>)
-(define-formula-op ! node/formula? #:min-length 1 #:max-length 1 #:lift @!)
-(define not !)
-
-(define-syntax (@@and stx)
-  (syntax-case stx ()
-    [(_) (syntax/loc stx #t)]
-    [(_ a0 a ...)
-     (syntax/loc stx
-       (let ([a0* a0])
-         (if (node/formula? a0*)
-             (&& a0* a ...)
-             (and a0* a ...))))]))
-(define-syntax (@@or stx)
-  (syntax-case stx ()
-    [(_) (syntax/loc stx #f)]
-    [(_ a0 a ...)
-     (syntax/loc stx
-       (let ([a0* a0])
-         (if (node/formula? a0*)
-             (|| a0* a ...)
-             (or a0* a ...))))]))
-       
+(define-formula-op && Node/Formula node/formula? #:min-length 1)
+(define-formula-op || Node/Formula node/formula? #:min-length 1)
+(define-formula-op => Node/Formula node/formula? #:min-length 2 #:max-length 2)
+(define-formula-op ! Node/Formula node/formula? #:min-length 1 #:max-length 1)       
 
 ;; -- quantifiers --------------------------------------------------------------
 
-(struct node/formula/quantified node/formula (quantifier decls formula)
+(struct node/formula/quantified node/formula
+  ([quantifier : CSymbol]
+   [decls : (CListof (C× Any Node/Expr))]
+   [formula : Node/Formula])
+  #:use-super-type
+  #:transparent ;; TODO: opaque structs?
   #:methods gen:custom-write
   [(define (write-proc self port mode)
-     (match-define (node/formula/quantified quantifier decls formula) self)
-     (fprintf port "(~a [~a] ~a)" quantifier decls formula))])
+     (fprintf port "(~a [~a] ~a)"
+              (node/formula/quantified-quantifier self)
+              (node/formula/quantified-decls self)
+              (node/formula/quantified-formula self)))])
+
+(: quantified-formula :
+   (C→ CSymbol (CListof (C× Any Node/Expr)) Node/Formula Node/Formula))
 (define (quantified-formula quantifier decls formula)
-  (for ([e (map cdr decls)])
-    (unless (node/expr? e)
-      (raise-argument-error quantifier "expr?" e))
-    (unless (equal? (node/expr-arity e) 1)
-      (raise-argument-error quantifier "decl of arity 1" e)))
+  (for ([decl (in-list decls)])
+    (let ([e (proj decl 1)])
+      (unless (node/expr? e)
+        (raise-argument-error quantifier "expr?" e))
+      (unless (equal? (node/expr-arity e) 1)
+        (raise-argument-error quantifier "decl of arity 1" e))))
   (unless (node/formula? formula)
     (raise-argument-error quantifier "formula?" formula))
   (node/formula/quantified quantifier decls formula))
 
 ;; -- multiplicities -----------------------------------------------------------
 
-(struct node/formula/multiplicity node/formula (mult expr)
+(struct node/formula/multiplicity node/formula
+  ([mult : CSymbol] [expr : Node/Expr])
+  #:use-super-type
+  #:transparent ;; TODO: opaque structs?
   #:methods gen:custom-write
   [(define (write-proc self port mode)
-     (match-define (node/formula/multiplicity mult expr) self)
-     (fprintf port "(~a ~a)" mult expr))])
+     (fprintf port "(~a ~a)"
+              (node/formula/multiplicity-mult self)
+              (node/formula/multiplicity-expr self)))])
+
+(: multiplicity-formula : (C→ CSymbol Node/Expr Node/Formula))
 (define (multiplicity-formula mult expr)
   (unless (node/expr? expr)
     (raise-argument-error mult "expr?" expr))
@@ -316,10 +352,11 @@
     [(_ ([x1 r1] ...) pred)
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
-         (let* ([x1 (declare-relation 1)] ...
-                [decls (list (cons x1 r1) ...)])
+         (let* ([x1 (declare-anonymous-relation 1)] ...
+                [decls (list (tup x1 r1) ...)])
            (quantified-formula 'all decls pred))))]))
 
+#|
 (define-syntax (some stx)
   (syntax-case stx ()
     [(_ ([x1 r1] ...) pred)

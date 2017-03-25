@@ -1,6 +1,7 @@
 #lang turnstile
 
-(provide struct)
+(provide struct
+         (for-syntax generic-interface-type-info))
 
 (require racket/splicing
          (except-in turnstile/examples/rosette/rosette2
@@ -8,8 +9,12 @@
                     C→ ~C→
                     Ccase-> ~Ccase->)
          (prefix-in ro: (only-in rosette/safe struct))
+         (only-in racket/private/generic-methods
+                  generic-property
+                  generic-method-table)
          "extra-types.rkt"
-         "define-lambda-app.rkt")
+         "define-lambda-app.rkt"
+         (for-syntax syntax/parse/class/local-value))
 (module+ test
   (require turnstile/examples/tests/rackunit-typechecking))
 
@@ -21,6 +26,24 @@
 
 (define-syntax-parser add-predm
   [(_ stx pred) (add-pred #'stx #'pred)])
+
+;; ----------------------------------------------------------------------------
+
+;; Generic Interfaces
+
+(begin-for-syntax
+  (struct generic-interface-type-info [untyped-binding get-methods])
+  ;; get-methods : [TypeStx -> (Listof (List Symbol TypeStx))]
+  (define-syntax-class generic-interface-id
+    #:attributes [id- get-methods]
+    [pattern generic-interface
+      #:declare generic-interface (local-value generic-interface-type-info?)
+      #:do [(match-define (generic-interface-type-info binding methods)
+              (attribute generic-interface.local-value))]
+      #:with id- binding
+      #:attr get-methods methods]))
+
+;; ----------------------------------------------------------------------------
 
 (begin-for-syntax
   (define struct-transformer-binding 'struct-transformer-binding)
@@ -38,8 +61,16 @@
   ;; Struct Options
 
   (define-splicing-syntax-class struct-options
-    [pattern (~seq #:transparent refl:struct-opt-reflection-name)
-      #:with [opt- ...] #'[#:transparent refl.opt- ...]])
+    #:attributes [get-opts-]
+    [pattern (~seq #:transparent
+                   refl:struct-opt-reflection-name
+                   gnrc:struct-opt-generic-methods ...)
+      #:attr get-opts-
+      (lambda (τ)
+        (apply stx-append
+               #'[#:transparent refl.opt- ...]
+               (for/list ([get-opts- (in-list (attribute gnrc.get-opts-))])
+                 (get-opts- τ))))])
 
   (define-splicing-syntax-class struct-opt-reflection-name
     [pattern (~seq)
@@ -56,6 +87,27 @@
                                 (typecheck-fail-msg/1 expected given #'sym-expr))))
       #:with [opt- ...] #'[#:reflection-name sym-expr-]])
 
+  (define-splicing-syntax-class struct-opt-generic-methods
+    #:attributes [get-opts-]
+    [pattern (~seq #:methods gnrc:generic-interface-id [method-def:expr ...])
+      #:attr get-opts-
+      (λ (τ)
+        (define id-
+          ((make-syntax-delta-introducer #'gnrc #'gnrc.id-) #'gnrc.id- 'flip))
+        (define type-decls
+          (for/list ([method/τ (in-list ((attribute gnrc.get-methods) τ))])
+            (define method-id
+              ;((make-syntax-delta-introducer #'gnrc #'gnrc.id-)
+               (datum->syntax #'gnrc (first method/τ) #'gnrc));)
+            (define τ_method (second method/τ))
+            #`(: #,method-id : #,τ_method)))
+        (syntax-parse type-decls
+          [(type-decl ...)
+           #`[#:property (generic-property #,id-)
+              (generic-method-table #,id- #:scope gnrc
+                                    type-decl ...
+                                    method-def ...)]]))])
+
   ;; -----------------------------------
   )
 
@@ -69,10 +121,11 @@
      (format-id #'name "~a-~a" #'name field #:source #'name #:props #'name))
    #:with [name* internal-name name?* name-field* ...]
    ((make-syntax-introducer) #'[name name name? name-field ...])
+   #:with [opt- ...] ((attribute opts.get-opts-) #'CName)
    #'(begin-
        (define-base-type CName)
        (define-named-type-alias Name (add-predm (U CName) name?))
-       (ro:struct name* [field ...] opts.opt- ...)
+       (ro:struct name* [field ...] opt- ...)
        (define-struct-name name name* internal-name CName [τ ...])
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))
@@ -80,15 +133,16 @@
          (unsafe-assign-type name-field* : (Ccase-> (C→ CName τ)
                                                     (C→ Name (U τ)))))
        ...)]
-  [(_ name:id super:super ([field:id : τ:type] ...) opts:struct-options)
+  [(_ name:id super:super ([field:id : τ:type] ...) #:use-super-type opts:struct-options)
    #:with name? (format-id #'name "~a?" #'name #:source #'name)
    #:with [name-field ...]
    (for/list ([field (in-list (syntax->list #'[field ...]))])
      (format-id #'name "~a-~a" #'name field #:source #'name #:props #'name))
    #:with [name* internal-name name?* name-field* ...]
    ((make-syntax-introducer) #'[name name name? name-field ...])
+   #:with [opt- ...] ((attribute opts.get-opts-) #'super.τ_inst)
    #'(begin-
-       (ro:struct name* super.id- [field ...] opts.opt- ...)
+       (ro:struct name* super.id- [field ...] opt- ...)
        (define-struct-name name name* internal-name super.τ_inst [super.τ_fld ... τ ...])
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))
@@ -144,7 +198,7 @@
   ;; inheritance
   ;; This doesn't actually define a new type, it always uses
   ;; the super type. So type of (abcde ...) is just ABC.
-  (struct abcde abc ([d : D] [e : E]) #:transparent)
+  (struct abcde abc ([d : D] [e : E]) #:use-super-type #:transparent)
 
   (check-type (abcde (a) (b) (c) (d) (e)) : ABC
               -> (abcde (a) (b) (c) (d) (e)))
