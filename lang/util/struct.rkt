@@ -3,11 +3,11 @@
 (provide struct
          (for-syntax generic-interface-type-info))
 
-(require racket/splicing
-         (except-in turnstile/examples/rosette/rosette2
-                    define λ #%app
-                    C→ ~C→
-                    Ccase-> ~Ccase->)
+(require "require.rkt"
+         racket/splicing
+         (subtract-in typed/rosette
+                      "define-lambda-app.rkt"
+                      "extra-types.rkt")
          (prefix-in ro: (only-in rosette/safe struct))
          (only-in racket/private/generic-methods
                   generic-property
@@ -62,15 +62,21 @@
 
   (define-splicing-syntax-class struct-options
     #:attributes [get-opts-]
-    [pattern (~seq #:transparent
+    [pattern (~seq trns:struct-opt-opacity
                    refl:struct-opt-reflection-name
                    gnrc:struct-opt-generic-methods ...)
       #:attr get-opts-
       (lambda (τ)
         (apply stx-append
-               #'[#:transparent refl.opt- ...]
+               #'[trns.opt- ... refl.opt- ...]
                (for/list ([get-opts- (in-list (attribute gnrc.get-opts-))])
                  (get-opts- τ))))])
+
+  (define-splicing-syntax-class struct-opt-opacity
+    [pattern (~seq)
+      #:with [opt- ...] #'[]]
+    [pattern (~seq #:transparent)
+      #:with [opt- ...] #'[#:transparent]])
 
   (define-splicing-syntax-class struct-opt-reflection-name
     [pattern (~seq)
@@ -113,7 +119,12 @@
 
 (define-syntax-parser struct
   #:datum-literals [:]
-  [(_ name:id ([field:id : τ:type] ...) #:type-name Name:id opts:struct-options)
+  [(_ name:id ([field:id : τ:type] ...)
+      (~or (~seq #:type-name Name:id)
+           (~seq (~fail #:unless (id-lower-case? #'name)
+                        (format "Expected lowercase struct name, given ~a" #'name))
+                 (~parse Name:id (id-upcase #'name))))
+      opts:struct-options)
    #:with CName (format-id #'Name "C~a" #'Name #:source #'Name)
    #:with name? (format-id #'name "~a?" #'name #:source #'name)
    #:with [name-field ...]
@@ -133,6 +144,9 @@
          (unsafe-assign-type name-field* : (Ccase-> (C→ CName τ)
                                                     (C→ Name (U τ)))))
        ...)]
+  ;; Sub-structs
+  ;; TODO: Allow defining a new type for the sub-struct that
+  ;;       is a distinct subtype of the parent's type.
   [(_ name:id super:super ([field:id : τ:type] ...) #:use-super-type opts:struct-options)
    #:with name? (format-id #'name "~a?" #'name #:source #'name)
    #:with [name-field ...]
@@ -171,23 +185,23 @@
 ;; ----------------------------------------------------------------------------
 
 (module+ test
-  (struct a () #:type-name A #:transparent)
-  (struct b () #:type-name B #:transparent)
-  (struct c () #:type-name C #:transparent)
-  (struct d () #:type-name D #:transparent)
-  (struct e () #:type-name E #:transparent)
-  (struct abc ([a : A] [b : B] [c : C]) #:type-name ABC #:transparent)
+  (struct a () #:transparent)
+  (struct b () #:transparent)
+  (struct c () #:transparent)
+  (struct d () #:transparent)
+  (struct e () #:transparent)
+  (struct abc ([a : A] [b : B] [c : C]) #:transparent)
 
   (check-type (a) : A -> (a))
   (check-type (b) : B -> (b))
   (check-type (c) : C -> (c))
   (check-type (d) : D -> (d))
   (check-type (e) : E -> (e))
-  (check-type (abc (a) (b) (c)) : ABC -> (abc (a) (b) (c)))
+  (check-type (abc (a) (b) (c)) : Abc -> (abc (a) (b) (c)))
   (typecheck-fail (abc (a) 3 (c))
     #:with-msg
-    "expected B, given PosInt\n *expression: 3"
-    #;"expected: *A, B, C\n *given: *CA, PosInt, CC\n *expressions: \\(a\\), 3, \\(c\\)")
+    #;"expected B, given PosInt\n *expression: 3"
+    "expected: *A, B, C\n *given: *CA, PosInt, CC\n *expressions: \\(a\\), 3, \\(c\\)")
 
   ;; predicates
   (check-type (a? (a)) : Bool -> #true)
@@ -197,21 +211,21 @@
 
   ;; inheritance
   ;; This doesn't actually define a new type, it always uses
-  ;; the super type. So type of (abcde ...) is just ABC.
+  ;; the super type. So type of (abcde ...) is just Abc.
   (struct abcde abc ([d : D] [e : E]) #:use-super-type #:transparent)
 
-  (check-type (abcde (a) (b) (c) (d) (e)) : ABC
+  (check-type (abcde (a) (b) (c) (d) (e)) : Abc
               -> (abcde (a) (b) (c) (d) (e)))
   (typecheck-fail (abcde (a) (b) (c) 3 (e))
     #:with-msg
-    "expected D, given PosInt\n *expression: 3"
-    #;"expected: *A, B, C, D, E\n *given: *CA, CB, CC, PosInt, CE\n *expressions: \\(a\\), \\(b\\), \\(c\\), 3, \\(e\\)")
+    #;"expected D, given PosInt\n *expression: 3"
+    "expected: *A, B, C, D, E\n *given: *CA, CB, CC, PosInt, CE\n *expressions: \\(a\\), \\(b\\), \\(c\\), 3, \\(e\\)")
 
-  ;; TODO: it should be an instance of ABCDE
-  ;;       and still an instance of ABC
-  #;(check-type (abcde (a) (b) (c) (d) (e)) : ABCDE
+  ;; TODO: it should be an instance of Abcde
+  ;;       and still an instance of Abc
+  #;(check-type (abcde (a) (b) (c) (d) (e)) : Abcde
               -> (abcde (a) (b) (c) (d) (e)))
-  #;(check-type (abcde (a) (b) (c) (d) (e)) : ABC
+  #;(check-type (abcde (a) (b) (c) (d) (e)) : Abc
               -> (abcde (a) (b) (c) (d) (e)))
 
   ;; inheritance and predicates

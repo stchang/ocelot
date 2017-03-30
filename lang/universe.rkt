@@ -1,4 +1,4 @@
-#lang s-exp turnstile/examples/rosette/rosette2
+#lang typed/rosette
 
 (require "util/provide.rkt"
          "util/define-lambda-app.rkt"

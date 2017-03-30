@@ -1,4 +1,4 @@
-#lang s-exp turnstile/examples/rosette/rosette2
+#lang typed/rosette
 
 (require "util/extra-types.rkt"
          "util/define-lambda-app.rkt"
@@ -8,7 +8,7 @@
          "util/require.rkt"
          "util/provide.rkt"
          (prefix-in @ "util/extra-forms.rkt")
-         (prefix-in @ (subtract-in turnstile/examples/rosette/rosette2
+         (prefix-in @ (subtract-in typed/rosette
                                    "util/extra-forms.rkt"))
          (prefix-in $ turnstile/examples/stlc+union+case)
          (for-syntax racket/base

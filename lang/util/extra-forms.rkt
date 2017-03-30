@@ -11,11 +11,11 @@
          define-syntax define-syntax-rule
          (rename-out [begin- splicing-begin]))
 
-(require (except-in turnstile/examples/rosette/rosette2
-                    define λ #%app
-                    C→ ~C→
-                    Ccase-> ~Ccase->)
-         (prefix-in tro: turnstile/examples/rosette/rosette2)
+(require "require.rkt"
+         (subtract-in typed/rosette
+                      "define-lambda-app.rkt"
+                      "extra-types.rkt")
+         (prefix-in tro: typed/rosette)
          (only-in turnstile/examples/stlc+tup
                   tup proj)
          (prefix-in ro: rosette)
@@ -130,7 +130,7 @@
    "wrong number of arguments for format string"
    [⊢ [v ≫ v- ⇐ Any] ...]
    --------
-   [⊢ (ro:fprintf out- fmt v- ...) ⇒ CVoid]])
+   [⊢ (ro:fprintf out- fmt v- ...) ⇒ CUnit]])
 
 ;; ----------------------------------------------------------------------------
 
