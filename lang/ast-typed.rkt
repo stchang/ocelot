@@ -13,18 +13,9 @@
          (prefix-in $ turnstile/examples/stlc+union+case)
          (for-syntax racket/base
                      racket/syntax))
-(provide (except-out (all-defined-out) #;next-name #;@@and #;@@or)
-         #;(rename-out [@@and and] [@@or or]))
 
-(require (except-in "ast-untyped.rkt"
-                    node/expr
-                    node/expr?
-                    node/expr-arity
-                    check-args
-                    + -
-                    not and or
-                    ))
-(provide (all-from-out "ast-untyped.rkt") + -)
+(provide (except-out (all-defined-out) next-name #;@@and #;@@or)
+         #;(rename-out [@@and and] [@@or or]))
 
 ; Ocelot ASTs are made up of expressions (which evaluate to relations) and
 ; formulas (which evaluate to booleans).
@@ -186,7 +177,7 @@
 ;; -- comprehensions -----------------------------------------------------------
 
 (struct node/expr/comprehension node/expr
-  ([decls : (CListof (C× Any Node/Expr))] [formula : Node/Formula])
+  ([decls : (CListof (C× Node/Expr Node/Expr))] [formula : Node/Formula])
   #:use-super-type
   #:transparent ; TODO: opaque structs?
   #:methods gen:custom-write
@@ -196,7 +187,7 @@
                   (node/expr/comprehension-decls self)
                   (node/expr/comprehension-formula self)))])
 
-(: comprehension : (C→ (CListof (C× Any Node/Expr)) Node/Formula Node/Expr))
+(: comprehension : (C→ (CListof (C× Node/Expr Node/Expr)) Node/Formula Node/Expr))
 (define (comprehension decls formula)
   (for ([decl (in-list decls)])
     (let ([e (proj decl 1)])
@@ -213,8 +204,8 @@
     [(_ ([x1 r1] ...) pred)
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
-         (let* ([x1 (declare-relation 1)] ...
-                [decls (list (cons x1 r1) ...)])
+         (let* ([x1 (declare-anonymous-relation 1)] ...
+                [decls (list (ann (tup x1 r1) : (C× Node/Expr Node/Expr)) ...)])
            (comprehension decls pred))))]))
 
 ;; -- relations ----------------------------------------------------------------
@@ -224,8 +215,8 @@
   #:transparent
   #:methods gen:equal+hash
   [(define (equal-proc a b equal?-recur)
-     (and (equal?-recur (node/expr-arity a) (node/expr-arity b))
-          (equal?-recur (node/expr/relation-name  a) (node/expr/relation-name b))))
+     (@and (equal?-recur (node/expr-arity a) (node/expr-arity b))
+           (equal?-recur (node/expr/relation-name  a) (node/expr/relation-name b))))
    (define (hash-proc a hash-recur)
      (@+ (hash-recur (node/expr/relation-name a))
          (hash-recur (node/expr-arity a))))
@@ -243,7 +234,7 @@
   (let ([name name])
     (node/expr/relation arity name)))
 
-(: next-name : CNat)
+(: next-name #:mutable : Nat)
 (define next-name 0)
 
 (: declare-anonymous-relation : (C→ CNat CNode/Expr))
@@ -305,7 +296,7 @@
 
 (struct node/formula/quantified node/formula
   ([quantifier : CSymbol]
-   [decls : (CListof (C× Any Node/Expr))]
+   [decls : (CListof (C× Node/Expr Node/Expr))]
    [formula : Node/Formula])
   #:use-super-type
   #:transparent ;; TODO: opaque structs?
@@ -317,7 +308,7 @@
               (node/formula/quantified-formula self)))])
 
 (: quantified-formula :
-   (C→ CSymbol (CListof (C× Any Node/Expr)) Node/Formula Node/Formula))
+   (C→ CSymbol (CListof (C× Node/Expr Node/Expr)) Node/Formula Node/Formula))
 (define (quantified-formula quantifier decls formula)
   (for ([decl (in-list decls)])
     (let ([e (proj decl 1)])
@@ -353,17 +344,16 @@
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
          (let* ([x1 (declare-anonymous-relation 1)] ...
-                [decls (list (tup x1 r1) ...)])
+                [decls (list (ann (tup x1 r1) : (C× Node/Expr Node/Expr)) ...)])
            (quantified-formula 'all decls pred))))]))
 
-#|
 (define-syntax (some stx)
   (syntax-case stx ()
     [(_ ([x1 r1] ...) pred)
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
-         (let* ([x1 (declare-relation 1)] ...
-                [decls (list (cons x1 r1) ...)])
+         (let* ([x1 (declare-anonymous-relation 1)] ...
+                [decls (list (ann (tup x1 r1) : (C× Node/Expr Node/Expr)) ...)])
            (quantified-formula 'some decls pred))))]
     [(_ expr)
      (syntax/loc stx
@@ -374,8 +364,8 @@
     [(_ ([x1 r1] ...) pred)
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
-         (let* ([x1 (declare-relation 1)] ...
-                [decls (list (cons x1 r1) ...)])
+         (let* ([x1 (declare-anonymous-relation 1)] ...
+                [decls (list (ann (tup x1 r1) : (C× Node/Expr Node/Expr)) ...)])
            (! (quantified-formula 'some decls pred)))))]
     [(_ expr)
      (syntax/loc stx
@@ -403,16 +393,19 @@
 ;; PREDICATES ------------------------------------------------------------------
 
 ; Operators that take only a single argument
+(: unary-op? : (C→ Any Bool))
 (define (unary-op? op)
   (@or (node/expr/op/~? op)
        (node/expr/op/^? op)
        (node/expr/op/*? op)
        (node/formula/op/!? op)
-       (@member op (list ~ ^ * ! not))))
+       (@member? op (list ~ ^ * ! not))))
+(: binary-op? : (C→ Any Bool))
 (define (binary-op? op)
-  (@member op (list <: :> in = =>)))
+  (@member? op (list <: :> in = =>)))
+(: nary-op? : (C→ Any Bool))
 (define (nary-op? op)
-  (@member op (list + - & -> join && ||)))
+  (@member? op (list + - & -> join && ||)))
 
 
 ;; PREFABS ---------------------------------------------------------------------
@@ -426,6 +419,8 @@
 ; (b) a function that takes a number of inputs defined by the above function, 
 ;     and produces an AST.
 
-(struct prefab (inputs ctor) #:transparent
+(struct prefab
+  ([inputs : (C→ Nat (Listof (Listof Nat)))]
+   [ctor : (C→* [] [] #:rest (Listof Node/Expr) Node/Expr)])
+  #:transparent
   #:property prop:procedure (struct-field-index ctor))
-|#

@@ -33,12 +33,12 @@
     [(node/expr/constant arity type)
      (interpret-constant universe type)]
     [(node/expr/comprehension arity decls f)
-     (let ([decls* (for/list ([d decls]) (cons (car d) (interpret-rec (cdr d) universe relations cache)))])
+     (let ([decls* (for/list ([d decls]) (list (first d) (interpret-rec (second d) universe relations cache)))])
        (interpret-comprehension universe relations decls* f cache))]
     [(node/formula/op args)
      (interpret-formula-op universe relations formula args cache)]
     [(node/formula/quantified quantifier decls f)
-     (let ([decls* (for/list ([d decls]) (cons (car d) (interpret-rec (cdr d) universe relations cache)))])
+     (let ([decls* (for/list ([d decls]) (list (first d) (interpret-rec (second d) universe relations cache)))])
        (interpret-quantifier universe relations quantifier decls* f cache))]
     [(node/formula/multiplicity mult expr)
      (let ([expr* (interpret-rec expr universe relations cache)])
@@ -84,7 +84,7 @@
   (define (comprehension* decls pre)
     (if (null? decls)
         (list (and pre (interpret-rec f universe relations (and cache (hash-copy cache)))))
-        (match-let ([(cons v r) (car decls)])
+        (match-let ([(list v r) (car decls)])
           (append* (for/list ([i usize][val (matrix-entries r)])
                      (if ($false? val)
                          (make-list (expt usize (sub1 (length decls))) #f)
@@ -126,7 +126,7 @@
 
 
 ; quantifier: 'all or 'some
-; decls: (listof (cons ast/node/relation matrix?)) binds the domains of the quantified variables
+; decls: (listof (list ast/node/relation matrix?)) binds the domains of the quantified variables
 ; f: the predicate
 (define (interpret-quantifier universe relations quantifier decls f cache)
   (define usize (universe-size universe))
@@ -134,7 +134,7 @@
     (define (rec decls)
       (if (null? decls)
           (interpret-rec f universe relations (and cache (hash-copy cache)))
-          (match-let ([(cons v r) (car decls)])
+          (match-let ([(list v r) (car decls)])
             (apply op (for/list ([i usize][val (matrix-entries r)] #:unless ($false? val))
                         (hash-set! relations v (singleton-matrix universe i))
                         (begin0

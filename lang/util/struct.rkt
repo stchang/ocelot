@@ -14,7 +14,9 @@
                   generic-method-table)
          "extra-types.rkt"
          "define-lambda-app.rkt"
-         (for-syntax syntax/parse/class/local-value))
+         (for-syntax racket/struct-info
+                     racket/syntax
+                     syntax/parse/class/local-value))
 (module+ test
   (require turnstile/examples/tests/rackunit-typechecking))
 
@@ -64,11 +66,12 @@
     #:attributes [get-opts-]
     [pattern (~seq trns:struct-opt-opacity
                    refl:struct-opt-reflection-name
+                   stpr:struct-opt-property ...
                    gnrc:struct-opt-generic-methods ...)
       #:attr get-opts-
       (lambda (τ)
         (apply stx-append
-               #'[trns.opt- ... refl.opt- ...]
+               #'[trns.opt- ... refl.opt- ... stpr.opt- ... ...]
                (for/list ([get-opts- (in-list (attribute gnrc.get-opts-))])
                  (get-opts- τ))))])
 
@@ -92,6 +95,18 @@
                          (~fail #:unless (typecheck? given expected)
                                 (typecheck-fail-msg/1 expected given #'sym-expr))))
       #:with [opt- ...] #'[#:reflection-name sym-expr-]])
+
+  (define-splicing-syntax-class struct-opt-property
+    #:attributes [[opt- 1]]
+    [pattern (~seq #:property
+                   (~and prop:expr
+                         ;; TODO: use a Turnstile pattern-expander
+                         ;; for typechecking this
+                         #; (~⊢ prop ≫ prop- ⇒ (~CStructTypeProp τ_v))
+                         (~parse prop- (expand/ro #'prop))
+                         (~parse (~CStructTypeProp τ_v) (typeof #'prop-)))
+                   val)
+      #:with [opt- ...] #`[#:property prop- (ann val : τ_v)]])
 
   (define-splicing-syntax-class struct-opt-generic-methods
     #:attributes [get-opts-]
@@ -167,20 +182,36 @@
        ...)]
   )
 
+(begin-for-syntax
+  (struct typed-struct-info [transformer untyped-id]
+    #:property prop:procedure (struct-field-index transformer)
+    #:property prop:struct-info
+    (λ (self)
+      (extract-struct-info
+       (syntax-local-value (typed-struct-info-untyped-id self)))))
+  (define (make-typed-struct-info constructor untyped-id type field-types)
+    (define/with-syntax [field-type ...] field-types)
+    (typed-struct-info
+     (make-variable-like-transformer
+      (set-stx-prop/preserved
+       (set-stx-prop/preserved
+        (set-stx-prop/preserved
+         (⊢ #,constructor : (C→ field-type ... #,type))
+         struct-transformer-binding
+         untyped-id)
+        struct-instance-type
+        type)
+       struct-field-types
+       field-types))
+     untyped-id)))
+
 (define-syntax-parser define-struct-name
   [(_ name constructor untyped-transformer type [field-type ...])
    #'(define-syntax name
-       (make-variable-like-transformer
-        (set-stx-prop/preserved
-         (set-stx-prop/preserved
-          (set-stx-prop/preserved
-           (⊢ constructor : (C→ field-type ... type))
-           struct-transformer-binding
-           (quote-syntax untyped-transformer))
-          struct-instance-type
-          (quote-syntax type))
-         struct-field-types
-         (list (quote-syntax field-type) ...))))])
+       (make-typed-struct-info (quote-syntax constructor)
+                               (quote-syntax untyped-transformer)
+                               (quote-syntax type)
+                               (list (quote-syntax field-type) ...)))])
 
 ;; ----------------------------------------------------------------------------
 

@@ -1,6 +1,8 @@
 #lang rosette
 
-(require "../ocelot.rkt" "../engine/symmetry.rkt"
+(require (except-in "../ocelot.rkt" all one)
+         (only-in "../lang/ast-untyped.rkt" all one)
+         "../engine/symmetry.rkt"
          (only-in "../lang/ast.rkt" relation-name relation-arity node/formula?))
 (provide define-sig scope alloy-fact alloy-run alloy-check
          clear-alloy-facts! clear-alloy!)

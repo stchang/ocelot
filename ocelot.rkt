@@ -6,6 +6,8 @@
 
 (provide
  ; lang/ast.rkt
+ Node/Expr CNode/Expr
+ Node/Formula CNode/Formula
  declare-relation
  + - & -> ~ join
  <: :>
@@ -13,11 +15,11 @@
  ^ *
  none univ iden
  in =
- and or => ! not
+ && || and or => ! not
  all some no
  one lone
  unary-op?
- (struct-out prefab)
+ prefab ; (struct-out prefab)
  ; lang/bounds.rkt
  make-bound make-exact-bound make-upper-bound make-product-bound
  (struct-out bounds)
@@ -25,6 +27,7 @@
  ; lang/sketch.rkt
  expression-sketch
  ; lang/universe.rkt
+ Universe CUniverse
  universe universe-atoms universe-inverse
  ; engine/engine.rkt
  interpret interpret*

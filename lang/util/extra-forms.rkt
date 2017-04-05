@@ -4,10 +4,10 @@
          in-list in-naturals
          and when unless
          ~v format fprintf
-         length first rest second map foldl
+         length first rest second map foldl member?
          +
          begin0 hash-ref tup proj
-         raise-argument-error raise-arguments-error void
+         raise-argument-error raise-arguments-error void exn:fail?
          define-syntax define-syntax-rule
          (rename-out [begin- splicing-begin]))
 
@@ -220,6 +220,14 @@
    --------
    [⊢ (ro:foldl f- base- lst-) ⇒ Y]])
 
+(define member
+  (unsafe-assign-type ro:member :
+                      (C→ Any (Listof Any) Any)))
+
+(: member? : (C→ Any (Listof Any) Bool))
+(define (member? v lov)
+  (if (member v lov) #true #false))
+
 ;; ----------------------------------------------------------------------------
 
 ;; Extra Arithmetic
@@ -282,3 +290,7 @@
                       : (C→ CSymbol CString Any Nothing)))
 
 (define void (unsafe-assign-type ro:void : (C→ CVoid)))
+
+(define exn:fail? (unsafe-assign-type ro:exn:fail? : (C→ Any Bool)))
+
+

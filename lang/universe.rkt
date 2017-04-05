@@ -16,7 +16,7 @@
   #:type-name Universe
   #:transparent)
 
-(define (make-universe [atoms : (CListof CSymbol)]) → Universe
+(define (make-universe [atoms : (CListof CSymbol)]) → CUniverse
   (let ([inverse (for/hash ([a (in-list atoms)]
                             [i (in-naturals)])
                    (tup a i))])
