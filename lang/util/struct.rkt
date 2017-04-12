@@ -153,8 +153,12 @@
        (define-named-type-alias Name (add-predm (U CName) name?))
        (ro:struct name* [field ...] opt- ...)
        (define-struct-name name name* internal-name CName [τ ...])
+       (: name? : (C→ Any Bool))
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))
+       (: name-field : (Ccase-> (C→ CName τ)
+                                (C→ Name (U τ))))
+       ...
        (define name-field
          (unsafe-assign-type name-field* : (Ccase-> (C→ CName τ)
                                                     (C→ Name (U τ)))))
@@ -173,8 +177,12 @@
    #'(begin-
        (ro:struct name* super.id- [field ...] opt- ...)
        (define-struct-name name name* internal-name super.τ_inst [super.τ_fld ... τ ...])
+       (: name? : (C→ Any Bool))
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))
+       (: name-field : (Ccase-> (C→ super.τ_inst τ)
+                                (C→ (U super.τ_inst) (U τ))))
+       ...
        (define name-field
          (unsafe-assign-type name-field* :
                              (Ccase-> (C→ super.τ_inst τ)

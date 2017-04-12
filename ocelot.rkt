@@ -22,7 +22,7 @@
  prefab ; (struct-out prefab)
  ; lang/bounds.rkt
  make-bound make-exact-bound make-upper-bound make-product-bound
- (struct-out bounds)
+ bounds ; (struct-out bounds)
  get-upper-bound bounds-union bounds-variables
  ; lang/sketch.rkt
  expression-sketch

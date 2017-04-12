@@ -1,13 +1,15 @@
 #lang turnstile
 
-(provide for for/list for/and for/hash
-         in-list in-naturals
-         and when unless
+(provide for/fold for for/list for/and for/or for/hash
+         for*/list
+         in-list in-naturals in-range
+         and when unless cond else
          ~v format fprintf
-         length first rest second map foldl member?
-         +
+         length list-ref first rest second map foldl member? cartesian-product*
+         log exact-round
          begin0 hash-ref tup proj
          raise-argument-error raise-arguments-error void exn:fail?
+         make-vector vector-ref vector-set! vector->list
          define-syntax define-syntax-rule
          (rename-out [begin- splicing-begin]))
 
@@ -26,19 +28,52 @@
 
 ;; For Loops and Sequences
 
+(define-typed-syntax for/fold
+  [(_ ([acc:id : τ_acc e_init])
+      ([x:id seq:expr] ...)
+      body:expr ...+) ≫
+   [⊢ e_init ≫ e_init- ⇐ τ_acc]
+   [⊢ [seq ≫ seq- ⇒ (~CSequenceof τ_x)] ...]
+   [[acc ≫ acc- : τ_acc]
+    [x ≫ x- : τ_x] ...
+    ⊢ (begin body ...) ≫ body- ⇐ τ_acc]
+   --------
+   [⊢ (ro:for/fold ([acc- e_init-])
+                   ([x- seq-] ...)
+        body-)
+      ⇒ τ_acc]])
+
 (define-typed-syntax for
   [(_ ([x:id seq:expr] ...) body:expr ...+) ≫
    [⊢ [seq ≫ seq- ⇒ (~CSequenceof τ_x)] ...]
    [[x ≫ x- : τ_x] ... ⊢ (begin body ...) ≫ body- ⇐ Void]
    --------
-   [⊢ (for- ([x- seq-] ...) body-) ⇒ Void]])
+   [⊢ (ro:for ([x- seq-] ...) body-) ⇒ Void]])
 
 (define-typed-syntax for/list
   [(_ ([x:id seq:expr] ...) body:expr) ≫
    [⊢ [seq ≫ seq- ⇒ (~CSequenceof τ_x)] ...]
    [[x ≫ x- : τ_x] ... ⊢ body ≫ body- ⇒ τ_body]
    --------
-   [⊢ (for/list- ([x- seq-] ...) body-)
+   [⊢ (ro:for/list ([x- seq-] ...) body-)
+      ⇒ (CListof τ_body)]])
+
+(define-typed-syntax for*/list
+  #:datum-literals [:]
+  [(_ ([x:id : τ_x:type seq:expr] ...) body:expr) ≫
+   #:do [(define (triangle lst)
+           (for/list ([i (in-range (stx-length lst))])
+             (take (stx->list lst) i)))]
+   #:with [[x_prev ...] ...] (triangle #'[x ...])
+   #:with [[τ_x_prev ...] ...] (triangle #'[τ_x ...])
+   [[x_prev ≫ x_prev- : τ_x_prev] ...
+    ⊢ seq ≫ seq- ⇐ (CSequenceof τ_x)]
+   ...
+   [[x ≫ x- : τ_x] ... ⊢ body ≫ body- ⇒ τ_body]
+   #:with [[x-_prev ...] ...] (triangle #'[x- ...])
+   --------
+   [⊢ (ro:for*/list ([x- (let- ([x_prev- x-_prev] ...) seq-)] ...)
+        body-)
       ⇒ (CListof τ_body)]])
 
 (define-typed-syntax for/and
@@ -46,8 +81,16 @@
    [⊢ [seq ≫ seq- ⇒ (~CSequenceof τ_x)] ...]
    [[x ≫ x- : τ_x] ... ⊢ body ≫ body- ⇒ τ_body]
    --------
-   [⊢ (for/and- ([x- seq-] ...) body-)
-      ⇒ (CListof (U Bool τ_body))]])
+   [⊢ (ro:for/and ([x- seq-] ...) body-)
+      ⇒ (U Bool τ_body)]])
+
+(define-typed-syntax for/or
+  [(_ ([x:id seq:expr] ...) body:expr) ≫
+   [⊢ [seq ≫ seq- ⇒ (~CSequenceof τ_x)] ...]
+   [[x ≫ x- : τ_x] ... ⊢ body ≫ body- ⇒ τ_body]
+   --------
+   [⊢ (ro:for/or ([x- seq-] ...) body-)
+      ⇒ (U Bool τ_body)]])
 
 ;; This behaves slightly differently from the racket
 ;; version: the body expression must produce a 2-tuple
@@ -57,19 +100,30 @@
    [⊢ [seq ≫ seq- ⇒ (~CSequenceof τ_x)] ...]
    [[x ≫ x- : τ_x] ... ⊢ body ≫ body- ⇒ (~C× τ_key τ_val)]
    --------
-   [⊢ (for/hash- ([x- seq-] ...) (apply- values- body-))
+   [⊢ (ro:for/hash ([x- seq-] ...) (apply- values- body-))
       ⇒ (CHashof τ_key τ_val)]])
 
 (define-typed-syntax in-list
   [(_ e:expr) ≫
    [⊢ e ≫ e- ⇒ : (~CListof τ)]
    --------
-   [⊢ (in-list- e-) ⇒ : (CSequenceof τ)]])
+   [⊢ (ro:in-list e-) ⇒ : (CSequenceof τ)]])
 
 (define-typed-syntax in-naturals
   [(_) ≫
    --------
-   [⊢ (in-naturals-) ⇒ : (CSequenceof CNat)]])
+   [⊢ (ro:in-naturals) ⇒ : (CSequenceof CNat)]])
+
+(define-typed-syntax in-range
+  [(_ e:expr) ≫
+   [⊢ e ≫ e- ⇐ CNat]
+   --------
+   [⊢ (ro:in-range e-) ⇒ (CSequenceof CNat)]]
+  [(_ a:expr b:expr) ≫
+   [⊢ a ≫ a- ⇐ CNat]
+   [⊢ b ≫ b- ⇐ CNat]
+   --------
+   [⊢ (ro:in-range a- b-) ⇒ (CSequenceof CNat)]])
 
 ;; ----------------------------------------------------------------------------
 
@@ -98,6 +152,16 @@
                     #'Bool)
    --------
    [⊢ (ro:and e- ...) ⇒ τ_out]])
+
+(define-syntax-parser cond
+  #:literals [else]
+  [(_ [else ~! body:expr])
+   #'body]
+  [(_ [(~and b:expr (~not else)) ~! v:expr] rst ... [else body:expr])
+   (quasisyntax/loc this-syntax
+     (if b
+         v
+         #,(syntax/loc this-syntax (cond rst ... [else body]))))])
 
 ;; ----------------------------------------------------------------------------
 
@@ -140,7 +204,24 @@
   [(_ lst:expr) ≫
    [⊢ lst ≫ lst- ⇒ (~CListof _)]
    --------
-   [⊢ (length- lst-) ⇒ CNat]])
+   [⊢ (ro:length lst-) ⇒ CNat]]
+  [(_ lst:expr) ≫
+   [⊢ lst ≫ lst- ⇒ (~U* (~CListof _))]
+   --------
+   [⊢ (ro:length lst-) ⇒ Nat]])
+
+(define-typed-syntax list-ref
+  [(_ lst:expr i:expr) ≫
+   [⊢ lst ≫ lst- ⇒ (~CListof τ)]
+   [⊢ i ≫ i- ⇐ CNat]
+   --------
+   [⊢ (ro:list-ref lst- i-) ⇒ τ]]
+  [(_ lst:expr i:expr) ≫
+   [⊢ lst ≫ lst- ⇒ (~or (~CListof τ)
+                        (~U* (~CListof τ)))]
+   [⊢ i ≫ i- ⇐ Nat]
+   --------
+   [⊢ (ro:list-ref lst- i-) ⇒ (U τ)]])
 
 (define-typed-syntax first
   [(_ lst:expr) ≫
@@ -228,33 +309,25 @@
 (define (member? v lov)
   (if (member v lov) #true #false))
 
+(define-typed-syntax cartesian-product*
+  [(_ lst:expr) ≫
+   [⊢ lst ≫ lst- ⇒ (~CListof (~CListof τ))]
+   --------
+   [⊢ (ro:apply ro:cartesian-product lst-)]])
+
 ;; ----------------------------------------------------------------------------
 
 ;; Extra Arithmetic
 
-(define +
-  (unsafe-assign-type ro:+ :
-                      (Ccase-> (C→ CNat CNat CNat)
-                               (C→ CNat CNat CNat CNat)
-                               (C→ CNat CNat CNat CNat CNat)
-                               (C→ Nat Nat Nat)
-                               (C→ Nat Nat Nat Nat)
-                               (C→ Nat Nat Nat Nat Nat)
-                               (C→* [] [] #:rest (CListof Nat) Nat)
-                               (C→ CInt CInt CInt)
-                               (C→ CInt CInt CInt CInt)
-                               (C→ CInt CInt CInt CInt CInt)
-                               (C→ Int Int Int)
-                               (C→ Int Int Int Int)
-                               (C→ Int Int Int Int Int)
-                               (C→* [] [] #:rest (CListof Int) Int)
-                               (C→ CNum CNum CNum)
-                               (C→ CNum CNum CNum CNum)
-                               (C→ CNum CNum CNum CNum CNum)
-                               (C→ Num Num Num)
-                               (C→ Num Num Num Num)
-                               (C→ Num Num Num Num Num)
-                               (C→* [] [] #:rest (CListof Num) Num))))
+(define log
+  (unsafe-assign-type ro:log : (C→ CNum CNum)))
+
+(define exact-round
+  (unsafe-assign-type ro:exact-round :
+                      (Ccase-> (C→ CNat CNat)
+                               (C→ Nat Nat)
+                               (C→ CNum CInt)
+                               (C→ Num Int))))
 
 ;; ----------------------------------------------------------------------------
 
@@ -293,4 +366,30 @@
 
 (define exn:fail? (unsafe-assign-type ro:exn:fail? : (C→ Any Bool)))
 
+(define-typed-syntax make-vector
+  [(_ size:expr v:expr) ≫
+   [⊢ size ≫ size- ⇐ CNat]
+   [⊢ v ≫ v- ⇒ τ]
+   --------
+   [⊢ (ro:make-vector size- v-) ⇒ (CMVectorof τ)]])
 
+(define-typed-syntax vector-ref
+  [(_ v:expr i:expr) ≫
+   [⊢ v ≫ v- ⇒ (~CMVectorof τ)]
+   [⊢ i ≫ i- ⇐ CNat]
+   --------
+   [⊢ (ro:vector-ref v- i-) ⇒ τ]])
+
+(define-typed-syntax vector-set!
+  [(_ v:expr i:expr x:expr) ≫
+   [⊢ v ≫ v- ⇒ (~CMVectorof τ)]
+   [⊢ i ≫ i- ⇐ CNat]
+   [⊢ x ≫ x- ⇐ τ]
+   --------
+   [⊢ (ro:vector-set! v- i- x-) ⇒ CUnit]])
+
+(define-typed-syntax vector->list
+  [(_ v:expr) ≫
+   [⊢ v ≫ v- ⇒ (~CMVectorof τ)]
+   --------
+   [⊢ (ro:vector->list v-) ⇒ (CListof τ)]])

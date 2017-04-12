@@ -2,6 +2,7 @@
 
 (require "../ocelot.rkt" "util.rkt"
          (only-in "../lang/util/extra-forms.rkt" exn:fail?)
+         (only-in "../engine/matrix.rkt" Matrix)
          (only-in "../engine/matrix-ops.rkt" matrix/contains?)
          (only-in rosette/safe define-syntax-rule module+)
          (only-in typed/rosette/base-forms unsafe-assign-type)
@@ -18,9 +19,6 @@
 (define A3 (declare-relation 3 "A3"))
 (define B3 (declare-relation 3 "B3"))
 (define C3 (declare-relation 3 "C3"))
-
-(define matrix/contains?*
-  (unsafe-assign-type matrix/contains? : (C→ CUniverse Any Any Bool)))
 
 (define-syntax-rule (test-expr* . stuff)
   (unsafe-assign-type (test-expr . stuff) : CUnit))
@@ -470,16 +468,16 @@
   (let ([E1 A2])
 
     (test-matrix U E1 [(A2 '((a b) (c c) (c d)))]
-                 (λ ([m : Any])
-                   (check-false* (matrix/contains?* U '(a a) m))))
+                 (λ ([m : Matrix])
+                   (check-false* (matrix/contains? U '(a a) m))))
 
     (test-matrix U E1 [(A2 '((a b) (c c) (c d)))]
-                 (λ ([m : Any])
-                   (check-true* (matrix/contains?* U '(a b) m))))
+                 (λ ([m : Matrix])
+                   (check-true* (matrix/contains? U '(a b) m))))
 
     (test-matrix* U E1 [(A2 '((a b) (c c) (c d)))]
-                 (λ ([m : Any])
-                   (check-true* (matrix/contains?* U '(c c) m))))
+                 (λ ([m : Matrix])
+                   (check-true* (matrix/contains? U '(c c) m))))
     ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
