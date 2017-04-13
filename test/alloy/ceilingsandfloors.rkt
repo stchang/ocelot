@@ -1,6 +1,11 @@
 #lang racket
 
 (require "../../ocelot.rkt" "../../lib/alloy.rkt" rackunit)
+(require typed/rosette/types
+         (only-in typed/rosette/base-forms
+                  unsafe-assign-type
+                  [define define:]
+                  [#%app app:]))
 
 ; This file implements the ceilingsAndFloors.als Alloy demo
 ; (found in Alloy's sample models under examples/toys/).
@@ -13,27 +18,31 @@
   [ceiling : Platform]
   [floor   : Platform])
 
+(define: Man* (unsafe-assign-type Man : Node/Expr))
+
 ; pred Above[m, n: Man] {m.floor = n.ceiling}
 (define (Above m n) (= (join m floor) (join n ceiling)))
 
+(define: Above* (unsafe-assign-type Above : (C→ Node/Expr Node/Expr Node/Formula)))
+
 ; fact PaulSimon {all m: Man | some n: Man | n.Above[m]}
 (define PaulSimon
-  (all ([m Man]) (some ([n Man]) (Above n m))))
+  (all ([m Man*]) (some ([n Man*]) (app: Above* n m))))
 (alloy-fact PaulSimon)
 
 ; assert BelowToo { all m: Man | some n: Man | m.Above[n] }
-(define BelowToo (all ([m Man]) (some ([n Man]) (Above m n))))
+(define BelowToo (all ([m Man*]) (some ([n Man*]) (app: Above* m n))))
 
 ; check BelowToo for 2 expect 1
 (check-false
  (alloy-check BelowToo (scope 2)))
 
 ; pred Geometry {no m: Man | m.floor = m.ceiling}
-(define Geometry (no ([m Man]) (= (join m floor) (join m ceiling))))
+(define Geometry (no ([m Man*]) (unsafe-assign-type (= (join m floor) (join m ceiling)) : Node/Formula)))
 
 ; assert BelowToo' { Geometry => (all m: Man | some n: Man | m.Above[n]) }
 (define BelowToo^
-  (=> Geometry (all ([m Man]) (some ([n Man]) (Above m n)))))
+  (=> Geometry (all ([m Man*]) (some ([n Man*]) (app: Above* m n)))))
 
 ; check BelowToo' for 2 expect 0
 (check-true
@@ -46,14 +55,16 @@
 ;  no m,n: Man | m!=n && (m.floor = n.floor || m.ceiling = n.ceiling)
 ; }
 (define NoSharing
-  (no ([m Man][n Man])
-      (and (! (= m n))
-           (or (= (join m floor) (join n floor))
-               (= (join m ceiling) (join n ceiling))))))
+  (no ([m Man*] [n Man*])
+      (unsafe-assign-type
+       (and (! (= m n))
+            (or (= (join m floor) (join n floor))
+                (= (join m ceiling) (join n ceiling))))
+       : Node/Formula)))
 
 ; assert BelowToo'' { NoSharing => (all m: Man | some n: Man | m.Above[n]) }
 (define BelowToo^^
-  (=> NoSharing (all ([m Man]) (some ([n Man]) (Above m n)))))
+  (=> NoSharing (all ([m Man*]) (some ([n Man*]) (app: Above* m n)))))
 
 ; check BelowToo'' for 6 expect 0
 (check-true
