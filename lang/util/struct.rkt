@@ -14,6 +14,9 @@
                   generic-method-table)
          "extra-types.rkt"
          "define-lambda-app.rkt"
+         (only-in "match.rkt"
+                  prop:match-pattern-id
+                  predicate-accessor-pattern-id)
          (for-syntax racket/struct-info
                      racket/syntax
                      syntax/parse/class/local-value))
@@ -50,13 +53,15 @@
 (begin-for-syntax
   (define struct-transformer-binding 'struct-transformer-binding)
   (define struct-instance-type 'struct-instance-type)
+  (define struct-accessors 'struct-accessors)
   (define struct-field-types 'struct-field-types)
   (define-syntax-class super
     [pattern super:id
-      #:with [id-:id τ_inst [τ_fld ...]]
+      #:with [id-:id τ_inst [accessor ...] [τ_fld ...]]
       (let ([super (local-expand #'super 'expression '())])
         (list (syntax-property super struct-transformer-binding)
               (syntax-property super struct-instance-type)
+              (syntax-property super struct-accessors)
               (syntax-property super struct-field-types)))])
 
   ;; -----------------------------------
@@ -148,20 +153,23 @@
    #:with [name* internal-name name?* name-field* ...]
    ((make-syntax-introducer) #'[name name name? name-field ...])
    #:with [opt- ...] ((attribute opts.get-opts-) #'CName)
+   #:with [τ_merged ...] (stx-map type-merge #'[τ.norm ...] #'[τ.norm ...])
    #'(begin-
        (define-base-type CName)
        (define-named-type-alias Name (add-predm (U CName) name?))
        (ro:struct name* [field ...] opt- ...)
-       (define-struct-name name name* internal-name CName [τ ...])
+       (define-struct-name name name* internal-name CName name?
+         [name-field ...]
+         [τ.norm ...])
        (: name? : (C→ Any Bool))
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))
        (: name-field : (Ccase-> (C→ CName τ)
-                                (C→ Name (U τ))))
+                                (C→ Name τ_merged)))
        ...
        (define name-field
          (unsafe-assign-type name-field* : (Ccase-> (C→ CName τ)
-                                                    (C→ Name (U τ)))))
+                                                    (C→ Name τ_merged))))
        ...)]
   ;; Sub-structs
   ;; TODO: Allow defining a new type for the sub-struct that
@@ -174,51 +182,78 @@
    #:with [name* internal-name name?* name-field* ...]
    ((make-syntax-introducer) #'[name name name? name-field ...])
    #:with [opt- ...] ((attribute opts.get-opts-) #'super.τ_inst)
+   #:with [τ_merged ...] (stx-map type-merge #'[τ.norm ...] #'[τ.norm ...])
    #'(begin-
        (ro:struct name* super.id- [field ...] opt- ...)
-       (define-struct-name name name* internal-name super.τ_inst [super.τ_fld ... τ ...])
+       (define-struct-name name name* internal-name super.τ_inst name?
+         [super.accessor ... name-field ...]
+         [super.τ_fld ... τ.norm ...])
        (: name? : (C→ Any Bool))
        (define name?
          (unsafe-assign-type name?* : (C→ Any Bool)))
        (: name-field : (Ccase-> (C→ super.τ_inst τ)
-                                (C→ (U super.τ_inst) (U τ))))
+                                (C→ (U super.τ_inst) τ_merged)))
        ...
        (define name-field
          (unsafe-assign-type name-field* :
                              (Ccase-> (C→ super.τ_inst τ)
-                                      (C→ (U super.τ_inst) (U τ)))))
+                                      (C→ (U super.τ_inst) τ_merged))))
        ...)]
   )
 
 (begin-for-syntax
-  (struct typed-struct-info [transformer untyped-id]
+  (struct typed-struct-info
+    [transformer untyped-id predicate accessors field-types]
     #:property prop:procedure (struct-field-index transformer)
     #:property prop:struct-info
     (λ (self)
       (extract-struct-info
-       (syntax-local-value (typed-struct-info-untyped-id self)))))
-  (define (make-typed-struct-info constructor untyped-id type field-types)
+       (syntax-local-value (typed-struct-info-untyped-id self))))
+    #:property prop:match-pattern-id
+    (λ (self)
+      (predicate-accessor-pattern-id
+       (typed-struct-info-predicate self)
+       (typed-struct-info-accessors self)
+       (map type-merge
+            (typed-struct-info-field-types self)
+            (typed-struct-info-field-types self)))))
+  (define (make-typed-struct-info constructor
+                                  untyped-id
+                                  type
+                                  predicate
+                                  accessors
+                                  field-types)
     (define/with-syntax [field-type ...] field-types)
     (typed-struct-info
      (make-variable-like-transformer
       (set-stx-prop/preserved
        (set-stx-prop/preserved
         (set-stx-prop/preserved
-         (⊢ #,constructor : (C→ field-type ... #,type))
-         struct-transformer-binding
-         untyped-id)
-        struct-instance-type
-        type)
+         (set-stx-prop/preserved
+          (⊢ #,constructor : (C→ field-type ... #,type))
+          struct-transformer-binding
+          untyped-id)
+         struct-instance-type
+         type)
+        struct-accessors
+        accessors)
        struct-field-types
        field-types))
-     untyped-id)))
+     untyped-id
+     predicate
+     accessors
+     field-types)))
 
 (define-syntax-parser define-struct-name
-  [(_ name constructor untyped-transformer type [field-type ...])
+  [(_ name constructor untyped-transformer type predicate
+      [accessor ...]
+      [field-type ...])
    #'(define-syntax name
        (make-typed-struct-info (quote-syntax constructor)
                                (quote-syntax untyped-transformer)
                                (quote-syntax type)
+                               (quote-syntax predicate)
+                               (list (quote-syntax accessor) ...)
                                (list (quote-syntax field-type) ...)))])
 
 ;; ----------------------------------------------------------------------------
