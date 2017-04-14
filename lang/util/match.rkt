@@ -4,6 +4,7 @@
          _ var quote
          and or not
          list
+         tup
          (for-syntax prop:match-pattern-id
                      predicate-accessor-pattern-id))
 
@@ -14,6 +15,10 @@
            [quote quote*]
            [and and*] [or or*] [not not*]
            [list list*])
+         (only-in "extra-types.rkt"
+           ~C×)
+         (only-in "extra-forms.rkt"
+           [tup tup*])
          (for-syntax syntax/parse/class/local-value))
 
 ;; ------------------------------------------------------------------------
@@ -278,6 +283,29 @@
 
 ;; ------------------------------------------------------------------------
 
+;; Tuple Patterns
+
+(define-syntax tup
+  (macro/match-pattern-id
+   (syntax-parser
+     [(_ e:expr ...) #'(tup* e ...)])
+   (syntax-parser
+     [(_ p:pat ...)
+      (define n (stx-length #'[p ...]))
+      (λ/pat-info v τ
+        (syntax-parse #'τ
+          [(~C× τ_elem ...)
+           #:when (stx-length=? #'[τ_elem ...] #'[p ...])
+           #:with [sub:pat-info ...]
+           (for/list ([get-pat-info (attribute p.get-pat-info)]
+                      [τ_elem (in-list (stx->list #'[τ_elem ...]))]
+                      [i (in-range n)])
+             (get-pat-info #`(list-ref v #,i) τ_elem))
+           #'[([sub.x sub.τ] ... ...)
+              (maybe-vector-append- sub.maybe-vec ...)]]))])))
+
+;; ------------------------------------------------------------------------
+
 ;; Predicate-Accessor Patterns
 
 ;; It's on the user to supply a predicate that implies that the accessors
@@ -299,11 +327,15 @@
          #:fail-unless (= n (stx-length #'[sub-pat ...]))
          (format "expected ~v sub-patterns" n)
          (λ/pat-info v τ
+           #:do [(define τ-concrete? (concrete? #'τ))]
            #:with [sub:pat-info ...]
            (for/list ([get-pat-info (in-list (attribute sub-pat.get-pat-info))]
                       [accessor (in-list accessors)]
                       [field-type (in-list field-types)])
-             (get-pat-info #`(#,accessor v) field-type))
+             (get-pat-info #`(#,accessor v)
+                           (if τ-concrete?
+                               field-type
+                               (type-merge field-type field-type))))
            #`[([sub.x sub.τ] ... ...)
               (and- (#,predicate v)
                     (maybe-vector-append- sub.maybe-vec ...))])])))

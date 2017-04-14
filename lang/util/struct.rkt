@@ -214,9 +214,7 @@
       (predicate-accessor-pattern-id
        (typed-struct-info-predicate self)
        (typed-struct-info-accessors self)
-       (map type-merge
-            (typed-struct-info-field-types self)
-            (typed-struct-info-field-types self)))))
+       (typed-struct-info-field-types self))))
   (define (make-typed-struct-info constructor
                                   untyped-id
                                   type

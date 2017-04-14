@@ -1,46 +1,76 @@
-#lang rosette
+#lang typed/rosette
 
-(require "../lang/bounds.rkt" "../lang/universe.rkt" "matrix.rkt"
-         (only-in "../lang/ast.rkt" relation-arity)
+(require "../lang/util/match.rkt"
+         "../lang/util/struct.rkt"
+         "../lang/util/extra-types.rkt"
+         (except-in "../lang/util/extra-forms.rkt" and tup)
+         "../lang/bounds.rkt" "../lang/universe.rkt" "matrix.rkt"
+         (only-in "../lang/ast.rkt" CNode/Expr relation-arity)
          (prefix-in $ racket))
 (provide (all-defined-out))
 
 ; An interpretation is a universe and an association list of (relation, matrix)
 ; pairs
-(struct interpretation (universe entries) #:transparent)
+(struct interpretation
+  ([universe : CUniverse]
+   [entries : (CListof (C× CNode/Expr CMatrix))])
+  #:transparent)
 
 ; receives an ast/node/relation and an uninterpreted bound
 
 ; Create an interpretation of the given bounds
+(: instantiate-bounds : (C→ CBounds CInterpretation))
 (define (instantiate-bounds bounds)
-  (define U (bounds-universe bounds))
-  (interpretation
-    U
-    (for/list ([bnd (bounds-entries bounds)])
-      (define rel (bound-relation bnd))
-      (define size (expt (universe-size U) (relation-arity rel)))
-      (define mat
-        (cond [(equal? (bound-lower bnd) (bound-upper bnd))
-               (define members ($map (curry tuple->idx U) (bound-upper bnd)))
-               (matrix (for/list ([i size]) (set-member? members i)))]
-              [else
-               (define lower ($map (curry tuple->idx U) (bound-lower bnd)))
-               (define upper ($map (curry tuple->idx U) (bound-upper bnd)))
-               (matrix (for/list ([i size])
-                           (cond [(set-member? lower i) #t]
-                                 [(set-member? upper i) (define-symbolic* r boolean?) r]
-                                 [else #f])))]))
-      (cons rel mat))))
+  (let ([U (bounds-universe bounds)])
+    (interpretation
+      U
+      (for/list ([bnd (in-list (bounds-entries bounds))])
+        (let* ([rel (bound-relation bnd)]
+               [size (assert-type (expt (universe-size U) (relation-arity rel))
+                                  : CNat)]
+               [mat
+                (cond [(equal? (bound-lower bnd) (bound-upper bnd))
+                       (let ([members
+                              (for/list ([tup (in-list (bound-upper bnd))])
+                                (tuple->idx U tup))])
+                         (matrix (for/list ([i (in-range size)])
+                                   (set-member? members i))))]
+                      [else
+                       (let ([lower
+                              (for/list ([tup (in-list (bound-lower bnd))])
+                                (tuple->idx U tup))]
+                             [upper
+                              (for/list ([tup (in-list (bound-upper bnd))])
+                                (tuple->idx U tup))])
+                         (matrix (for/list ([i (in-range size)])
+                                   (cond [(set-member? lower i) #t]
+                                         [(set-member? upper i)
+                                          (let-symbolic* [r boolean?]
+                                            r)]
+                                         [else #f]))))])])
+          (tup rel mat))))))
 
+(: interpretation-union :
+   (C→* [] [] #:rest (CListof CInterpretation) CInterpretation))
 (define (interpretation-union . interps)
-  (define U (interpretation-universe (first interps)))
-  (interpretation U (for*/list ([i interps][e (interpretation-entries i)]) e)))
+  (let ([U (interpretation-universe (first interps))])
+    (interpretation
+      U
+      (for*/list ([i : CInterpretation (in-list interps)]
+                  [e : (C× CNode/Expr CMatrix) (in-list (interpretation-entries i))])
+        e))))
 
+(: interpretation->relations : (C→ CInterpretation Any))
 (define (interpretation->relations interp)
-  (match-define (interpretation U entries) interp)
-  (for/hash ([pair entries])
-    (match-define (cons rel mat) pair)
-    (define contents (matrix-entries mat))
-    (define arity (matrix-arity U contents))
-    (values rel (for/list ([(x i) (in-indexed contents)] #:when x)
-                  (idx->tuple U arity i)))))
+  (match interp
+    [(interpretation U entries)
+     (for/hash ([pair (in-list entries)])
+       (match pair
+         [(tup rel mat)
+          (let* ([contents (matrix-entries mat)]
+                 [arity (matrix-entries-arity U contents)])
+            (tup rel
+                 (for/list ([x (in-list contents)]
+                            [i (in-naturals)]
+                            #:when x)
+                   (idx->tuple U arity i))))]))]))

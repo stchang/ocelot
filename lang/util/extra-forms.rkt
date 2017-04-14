@@ -6,6 +6,7 @@
          and when unless cond else
          ~v format fprintf
          length list-ref first rest second map foldl member? cartesian-product*
+         set-member?
          log exact-round
          begin0 hash-ref tup proj
          raise-argument-error raise-arguments-error void exn:fail?
@@ -314,6 +315,10 @@
    [⊢ lst ≫ lst- ⇒ (~CListof (~CListof τ))]
    --------
    [⊢ (ro:apply ro:cartesian-product lst-)]])
+
+(define set-member?
+  (unsafe-assign-type ro:set-member? :
+                      (C→ (CListof CAny) CAny CBool)))
 
 ;; ----------------------------------------------------------------------------
 
