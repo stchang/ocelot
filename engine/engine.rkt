@@ -9,12 +9,15 @@
 
 (provide interpret interpret*)
 
+(define (tup2->cons tup)
+  (cons (first tup) (second tup)))
+
 (define (interpret formula bounds)
   (define interp (instantiate-bounds bounds))
   (interpret* formula interp))
 (define (interpret* formula interp #:cache? [cache? #f])
   (match-define (interpretation universe entries) interp)
-  (define relations (make-hash entries))
+  (define relations (make-hash (map tup2->cons entries)))
   (interpret-rec formula universe relations (if cache? (make-hash) #f)))
 
 

@@ -1,11 +1,15 @@
 #lang rosette
 
-(require (except-in "../ocelot.rkt" all one)
-         (only-in "../lang/ast-untyped.rkt" all one)
+(require "../ocelot.rkt"
          "../engine/symmetry.rkt"
+         (prefix-in @ rosette/safe)
          (only-in "../lang/ast.rkt" relation-name relation-arity node/formula?))
+(require (only-in typed/rosette/base-forms
+                  unsafe-assign-type))
 (provide define-sig scope alloy-fact alloy-run alloy-check
          clear-alloy-facts! clear-alloy!)
+
+(provide sigs sig-relation sig-type)
 
 
 ;; Define signatures using (define-sig name (type ...))
@@ -36,7 +40,7 @@
   (define leaves
     (for/list ([s (sigs)] #:when (member (sig-relation s) (sig-type s)))
       (let ([r (sig-relation s)])
-        (unless (= (relation-arity r) 1)
+        (unless (@= (relation-arity r) 1)
           (error 'scope "self-referencing relation of arity > 1: ~v" r))
         r)))
   ; Instantiate leaf signatures
@@ -58,7 +62,7 @@
   (define domain
     (for/list ([s (sigs)] #:unless (hash-has-key? relation->atoms (sig-relation s)))
       (define arity (length (sig-type s)))
-      (define left (if (= arity 1)
+      (define left (if (@= arity 1)
                        (sig-relation s)
                        (fold-op (cons (sig-relation s) (make-list (sub1 arity) univ)) join)))
       (in left (car (sig-type s)))))
@@ -66,9 +70,11 @@
   ; sig A { f: B } means that all a: A | one a.f
   (define mults
     (for/list ([s (sigs)] #:when (> (length (sig-type s)) 1))
-      (all ([x (car (sig-type s))])
-        (and (one (join x (sig-relation s)))
-             (in (join x (sig-relation s)) (fold-op (cdr (sig-type s)) ->))))))
+      (all ([x (unsafe-assign-type (car (sig-type s)) : Node/Expr)])
+       (unsafe-assign-type
+        (and (one (unsafe-assign-type (join x (sig-relation s)) : Node/Expr))
+             (in (join x (sig-relation s)) (fold-op (cdr (sig-type s)) ->)))
+        : Node/Formula))))
   (alloy-scope (bounds (universe atoms) bnds) (append domain mults)))
 
 
@@ -88,7 +94,7 @@
   (define dom (for/list ([d (alloy-scope-domain scope)]) (interpret* d interp)))
   (define post (interpret* f interp))
   (define sbp (generate-sbp interp (alloy-scope-bounds scope)))
-  (sat? (solve (assert (and sbp (apply && pre) (apply && dom) post)))))
+  (sat? (solve (assert (@and sbp (apply @&& pre) (apply @&& dom) post)))))
 
 
 ;; Check a formula
@@ -99,7 +105,7 @@
   (define dom (for/list ([d (alloy-scope-domain scope)]) (interpret* d interp)))
   (define post (interpret* f interp))
   (define sbp (generate-sbp interp (alloy-scope-bounds scope)))
-  (unsat? (solve (assert (and sbp (apply && dom) (apply && pre) (not post))))))
+  (unsat? (solve (assert (@and sbp (apply @&& dom) (apply @&& pre) (@not post))))))
 
 
 ;; Clear all Alloy asserts

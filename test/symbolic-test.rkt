@@ -1,6 +1,7 @@
 #lang s-exp rosette
 
 (require "../ocelot.rkt" "util.rkt"
+         (prefix-in @ rosette/safe)
          rosette/lib/angelic
          rackunit rackunit/text-ui)
 
@@ -50,7 +51,7 @@
   (define-symbolic p q boolean?)
 
   (define X (if p A1 B1))
-  (define Y (if (&& p q) (+ X none) (- X none)))
+  (define Y (if (@&& p q) (+ X none) (- X none)))
 
   ; p = #t => Y = A1
   ; p = #f => Y = B1

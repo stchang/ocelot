@@ -1,6 +1,8 @@
 #lang typed/rosette
 
-(require "../lang/util/match.rkt"
+(require (only-in typed/rosette/base-forms unsafe-assign-type)
+         (only-in racket/base #%expression)
+         "../lang/util/match.rkt"
          "../lang/util/struct.rkt"
          "../lang/util/extra-types.rkt"
          (except-in "../lang/util/extra-forms.rkt" and tup)
@@ -65,12 +67,18 @@
   (match interp
     [(interpretation U entries)
      (for/hash ([pair (in-list entries)])
-       (match pair
+       (unsafe-assign-type
+       (#%expression
+        (match pair
          [(tup rel mat)
           (let* ([contents (matrix-entries mat)]
                  [arity (matrix-entries-arity U contents)])
             (tup rel
-                 (for/list ([x (in-list contents)]
+                 #;(for/list ([x (in-list contents)]
                             [i (in-naturals)]
                             #:when x)
-                   (idx->tuple U arity i))))]))]))
+                   (idx->tuple U arity i))
+                 (for/list ([x (in-list contents)]
+                            [i (in-naturals)])
+                   (idx->tuple U arity i))))]))
+       : (C× CNode/Expr Any)))]))

@@ -1,7 +1,9 @@
 #lang racket
 
 (require "../../ocelot.rkt" "../../lib/alloy.rkt" rackunit)
-(require (only-in typed/rosette/base-forms
+(require (only-in ocelot/lang/ast
+                  node/expr?)
+         (only-in typed/rosette/base-forms
                   unsafe-assign-type
                   [define define:]))
 

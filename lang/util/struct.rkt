@@ -91,25 +91,14 @@
       #:with [opt- ...] #'[]]
     [pattern (~seq #:reflection-name
                    (~and sym-expr:expr
-                         ;; TODO: use a Turnstile pattern-expander
-                         ;; for typechecking this
-                         #; (~⊢ sym-expr ≫ sym-expr- ⇐ CSymbol)
-                         (~parse sym-expr- (expand/df #'sym-expr))
-                         (~do (define given (typeof #'sym-expr-))
-                              (define expected ((current-type-eval) #'CSymbol)))
-                         (~fail #:unless (typecheck? given expected)
-                                (typecheck-fail-msg/1 expected given #'sym-expr))))
+                         (~⊢ sym-expr ≫ sym-expr- ⇐ CSymbol)))
       #:with [opt- ...] #'[#:reflection-name sym-expr-]])
 
   (define-splicing-syntax-class struct-opt-property
     #:attributes [[opt- 1]]
     [pattern (~seq #:property
                    (~and prop:expr
-                         ;; TODO: use a Turnstile pattern-expander
-                         ;; for typechecking this
-                         #; (~⊢ prop ≫ prop- ⇒ (~CStructTypeProp τ_v))
-                         (~parse prop- (expand/ro #'prop))
-                         (~parse (~CStructTypeProp τ_v) (typeof #'prop-)))
+                         (~⊢ prop ≫ prop- ⇒ (~CStructTypeProp τ_v)))
                    val)
       #:with [opt- ...] #`[#:property prop- (ann val : τ_v)]])
 

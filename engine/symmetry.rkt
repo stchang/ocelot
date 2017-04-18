@@ -116,7 +116,7 @@
       (define permuted '())
       (for ([rparts relParts]
             #:when (set-member? (relation-parts-reps rparts) (tupleset-min sym)))
-        (define m (cdr (assoc (relation-parts-rel rparts) (interpretation-entries interp))))
+        (define m (second (assoc (relation-parts-rel rparts) (interpretation-entries interp))))
         (define arity (relation-arity (relation-parts-rel rparts)))
         (for ([(entry i) (in-indexed (matrix-entries m))] #:unless (false? entry))
           (define permIndex (permutation U arity i prevIndex curIndex))
