@@ -4,11 +4,12 @@
          for*/list
          in-list in-naturals in-range
          and when unless cond else
-         ~v format fprintf
+         ~v format fprintf error
          length list-ref first rest second map foldl member? cartesian-product*
          set-member?
          log exact-round
-         begin0 hash-ref tup proj
+         make-hash hash-ref hash-ref!
+         begin0 tup proj
          raise-argument-error raise-arguments-error void exn:fail?
          make-vector vector-ref vector-set! vector->list
          define-syntax define-syntax-rule
@@ -197,6 +198,16 @@
    --------
    [⊢ (ro:fprintf out- fmt v- ...) ⇒ CUnit]])
 
+(define-typed-syntax error
+  [(_ sym:expr fmt:str v:expr ...) ≫
+   [⊢ sym ≫ sym- ⇐ CSymbol]
+   #:fail-unless
+   (format-string-matches? (syntax-e #'fmt) (syntax->datum #'[v ...]))
+   "wrong number of arguments for format string"
+   [⊢ [v ≫ v- ⇐ Any] ...]
+   --------
+   [⊢ (ro:error sym- fmt v- ...) ⇒ CNothing]])
+
 ;; ----------------------------------------------------------------------------
 
 ;; Lists
@@ -336,6 +347,41 @@
 
 ;; ----------------------------------------------------------------------------
 
+;; Hash Tables
+
+(define-typed-syntax make-hash
+  [(_) ⇐ (~CHashof K V) ≫ --- [⊢ (ro:make-hash)]]
+  [(_) ≫ --- [⊢ (ro:make-hash) ⇒ (CHashof Any Any)]]
+  [(_ e:expr ~!) ≫
+   [⊢ e ≫ e- ⇒ (~CListof (~C× τ_key τ_val))]
+   --------
+   [⊢ (ro:make-hash
+       (ro:map (ro:λ (x) (ro:cons (ro:first x) (ro:second x))) e-))
+      ⇒ (CHashof τ_key τ_val)]])
+
+(define-typed-syntax hash-ref
+  [(_ hsh:expr key:expr) ≫
+   [⊢ hsh ≫ hsh- ⇒ : (~CHashof τ_key τ_val)]
+   [⊢ key ≫ key- ⇐ : τ_key]
+   --------
+   [⊢ (ro:hash-ref hsh- key-) ⇒ : τ_val]]
+  [(_ hsh:expr key:expr fail:expr) ≫
+   [⊢ hsh ≫ hsh- ⇒ : (~CHashof τ_key τ_val)]
+   [⊢ key ≫ key- ⇐ : τ_key]
+   [⊢ fail ≫ fail- ⇐ : (C→ τ_val)]
+   --------
+   [⊢ (ro:hash-ref hsh- key- fail-) ⇒ : τ_val]])
+
+(define-typed-syntax hash-ref!
+  [(_ hsh:expr key:expr to-set:expr) ≫
+   [⊢ hsh ≫ hsh- ⇒ : (~CHashof τ_key τ_val)]
+   [⊢ key ≫ key- ⇐ : τ_key]
+   [⊢ to-set ≫ to-set- ⇐ : (C→ τ_val)]
+   --------
+   [⊢ (ro:hash-ref! hsh- key- to-set-) ⇒ : τ_val]])
+
+;; ----------------------------------------------------------------------------
+
 ;; Other
 
 (define-typed-syntax begin0
@@ -344,13 +390,6 @@
    [⊢ [e ≫ e- ⇐ Void] ...]
    --------
    [⊢ (ro:begin0 e0- e- ...) ⇒ τ]])
-
-(define-typed-syntax hash-ref
-  [(_ hsh:expr key:expr) ≫
-   [⊢ hsh ≫ hsh- ⇒ : (~CHashof τ_key τ_val)]
-   [⊢ key ≫ key- ⇐ : τ_key]
-   --------
-   [⊢ (hash-ref- hsh- key-) ⇒ : τ_val]])
 
 (define-typed-syntax raise-arguments-error
   [(_ name message (~seq field v) ...) ≫

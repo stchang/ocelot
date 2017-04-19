@@ -135,6 +135,7 @@
    [[p.x ≫ x- : p.τ] ...
     ⊢ body ≫ body- ⇒ τ_body]
    ...
+   #:with τ_out (type-merge* #'[τ_body ...])
    #:with failure-
    #'(assert- #false (format- "no matching clause for ~v" tmp))
    #:with matching-expr-
@@ -155,7 +156,7 @@
              acc))))
    --------
    [⊢ (let- ([tmp val-]) matching-expr-)
-      ⇒ Any]])
+      ⇒ τ_out]])
 
 ;; ------------------------------------------------------------------------
 

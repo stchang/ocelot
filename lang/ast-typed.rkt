@@ -38,7 +38,7 @@
 
 ;; EXPRESSIONS -----------------------------------------------------------------
 
-(struct node/expr ([arity : Nat])
+(struct node/expr ([arity : CNat])
   #:type-name Node/Expr
   #:transparent)
 
@@ -99,8 +99,10 @@
                                         (assert-type a : Node/Expr)))))))
   (when join?
     (when (<= (apply join-arity (for/list ([a (in-list args)])
-                                  (node/expr-arity
-                                   (assert-type a : Node/Expr))))
+                                  (assert-type
+                                   (node/expr-arity
+                                    (assert-type a : Node/Expr))
+                                   : CNat)))
               0)
       (raise-arguments-error op "join would create a relation of arity 0")))
   (when range?
@@ -117,7 +119,7 @@
 
 ;; -- operators ----------------------------------------------------------------
 
-(struct node/expr/op node/expr ([children : (CListof Node/Expr)])
+(struct node/expr/op node/expr ([children : (CListof CNode/Expr)])
   #:use-super-type
   #:transparent)
 
@@ -130,16 +132,16 @@
          (splicing-begin
            (struct name node/expr/op () #:use-super-type #:transparent
              #:reflection-name 'id)
-           (define id : (C→* [] [] #:rest (CListof Node/Expr) Node/Expr)
+           (define id : (C→* [] [] #:rest (CListof CNode/Expr) CNode/Expr)
              (λ e
                (begin
                  (check-args 'id e node/expr? checks ...)
                  (let ([arities (for/list ([a (in-list e)]) (node/expr-arity a))])
-                   (name (assert-type (apply arity arities) : Nat) e))))))))]))
+                   (name (assert-type (apply arity arities) : CNat) e))))))))]))
 
-(define get-first : (C→* [] [] #:rest (CListof Nat) Nat)
+(define get-first : (C→* [] [] #:rest (CListof CNat) CNat)
   (λ e (first e)))
-(define get-second : (C→* [] [] #:rest (CListof Nat) Nat)
+(define get-second : (C→* [] [] #:rest (CListof CNat) CNat)
   (λ e (second e)))
 (define-syntax-rule (define-op/combine id)
   (define-expr-op id get-first #:same-arity? #t))
@@ -154,7 +156,7 @@
 
 (define-expr-op ~ get-first #:min-length 1 #:max-length 1 #:arity 2)
 
-(: join-arity : (C→* [] [] #:rest (CListof Nat) Int))
+(: join-arity : (C→* [] [] #:rest (CListof CNat) CInt))
 ;; join-arity does not always produce an arity, sometimes
 ;; it can produce a negative integer
 (define join-arity
@@ -171,13 +173,13 @@
 (define-op/closure ^)
 (define-op/closure *)
 
-(define (const [v : Nat]) → (C→* [] [] #:rest (CListof Nat) Nat)
+(define (const [v : CNat]) → (C→* [] [] #:rest (CListof CNat) CNat)
   (λ args v))
 
 ;; -- comprehensions -----------------------------------------------------------
 
 (struct node/expr/comprehension node/expr
-  ([decls : (CListof (C× Node/Expr Node/Expr))] [formula : Node/Formula])
+  ([decls : (CListof (C× CNode/Expr CNode/Expr))] [formula : CNode/Formula])
   #:use-super-type
   #:transparent ; TODO: opaque structs?
   #:methods gen:custom-write
@@ -187,7 +189,7 @@
                   (node/expr/comprehension-decls self)
                   (node/expr/comprehension-formula self)))])
 
-(: comprehension : (C→ (CListof (C× Node/Expr Node/Expr)) Node/Formula Node/Expr))
+(: comprehension : (C→ (CListof (C× CNode/Expr CNode/Expr)) CNode/Formula CNode/Expr))
 (define (comprehension decls formula)
   (for ([decl (in-list decls)])
     (let ([e (proj decl 1)])
@@ -243,11 +245,11 @@
                       (set! next-name (add1 next-name)))])
     (node/expr/relation arity name)))
 
-(: relation-arity : (C→ Node/Expr Nat))
+(: relation-arity : (C→ CNode/Expr CNat))
 (define (relation-arity rel)
   (node/expr-arity rel))
 
-(: relation-name : (C→ Node/Expr String))
+(: relation-name : (C→ CNode/Expr CString))
 (define (relation-name rel)
   (node/expr/relation-name rel))
 
@@ -278,26 +280,26 @@
          (splicing-begin
            (struct name node/formula/op () #:use-super-type #:transparent
              #:reflection-name 'id)
-           (define id : (C→* [] [] #:rest (CListof Type) Node/Formula)
+           (define id : (C→* [] [] #:rest (CListof Type) CNode/Formula)
              (λ e
                (begin
                  (check-args 'id e type? checks ...)
                  (name e)))))))]))
 
-(define-formula-op in Node/Expr node/expr? #:same-arity? #t #:max-length 2)
-(define-formula-op = Node/Expr node/expr? #:same-arity? #t #:max-length 2)
+(define-formula-op in CNode/Expr node/expr? #:same-arity? #t #:max-length 2)
+(define-formula-op = CNode/Expr node/expr? #:same-arity? #t #:max-length 2)
 
-(define-formula-op && Node/Formula node/formula? #:min-length 1)
-(define-formula-op || Node/Formula node/formula? #:min-length 1)
-(define-formula-op => Node/Formula node/formula? #:min-length 2 #:max-length 2)
-(define-formula-op ! Node/Formula node/formula? #:min-length 1 #:max-length 1)       
+(define-formula-op && CNode/Formula node/formula? #:min-length 1)
+(define-formula-op || CNode/Formula node/formula? #:min-length 1)
+(define-formula-op => CNode/Formula node/formula? #:min-length 2 #:max-length 2)
+(define-formula-op ! CNode/Formula node/formula? #:min-length 1 #:max-length 1)       
 
 ;; -- quantifiers --------------------------------------------------------------
 
 (struct node/formula/quantified node/formula
   ([quantifier : CSymbol]
-   [decls : (CListof (C× Node/Expr Node/Expr))]
-   [formula : Node/Formula])
+   [decls : (CListof (C× CNode/Expr CNode/Expr))]
+   [formula : CNode/Formula])
   #:use-super-type
   #:transparent ;; TODO: opaque structs?
   #:methods gen:custom-write
@@ -308,7 +310,8 @@
               (node/formula/quantified-formula self)))])
 
 (: quantified-formula :
-   (C→ CSymbol (CListof (C× Node/Expr Node/Expr)) Node/Formula Node/Formula))
+   (C→ CSymbol (CListof (C× CNode/Expr CNode/Expr)) CNode/Formula
+       CNode/Formula))
 (define (quantified-formula quantifier decls formula)
   (for ([decl (in-list decls)])
     (let ([e (proj decl 1)])
@@ -323,7 +326,7 @@
 ;; -- multiplicities -----------------------------------------------------------
 
 (struct node/formula/multiplicity node/formula
-  ([mult : CSymbol] [expr : Node/Expr])
+  ([mult : CSymbol] [expr : CNode/Expr])
   #:use-super-type
   #:transparent ;; TODO: opaque structs?
   #:methods gen:custom-write
@@ -332,7 +335,7 @@
               (node/formula/multiplicity-mult self)
               (node/formula/multiplicity-expr self)))])
 
-(: multiplicity-formula : (C→ CSymbol Node/Expr Node/Formula))
+(: multiplicity-formula : (C→ CSymbol CNode/Expr CNode/Formula))
 (define (multiplicity-formula mult expr)
   (unless (node/expr? expr)
     (raise-argument-error mult "expr?" expr))
@@ -344,7 +347,7 @@
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
          (let* ([x1 (declare-anonymous-relation 1)] ...
-                [decls (list (ann (tup x1 r1) : (C× Node/Expr Node/Expr)) ...)])
+                [decls (list (ann (tup x1 r1) : (C× CNode/Expr CNode/Expr)) ...)])
            (quantified-formula 'all decls pred))))]))
 
 (define-syntax (some stx)
@@ -353,7 +356,7 @@
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
          (let* ([x1 (declare-anonymous-relation 1)] ...
-                [decls (list (ann (tup x1 r1) : (C× Node/Expr Node/Expr)) ...)])
+                [decls (list (ann (tup x1 r1) : (C× CNode/Expr CNode/Expr)) ...)])
            (quantified-formula 'some decls pred))))]
     [(_ expr)
      (syntax/loc stx
@@ -365,7 +368,7 @@
      (with-syntax ([(rel ...) (generate-temporaries #'(r1 ...))])
        (syntax/loc stx
          (let* ([x1 (declare-anonymous-relation 1)] ...
-                [decls (list (ann (tup x1 r1) : (C× Node/Expr Node/Expr)) ...)])
+                [decls (list (ann (tup x1 r1) : (C× CNode/Expr CNode/Expr)) ...)])
            (! (quantified-formula 'some decls pred)))))]
     [(_ expr)
      (syntax/loc stx

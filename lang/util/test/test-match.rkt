@@ -11,14 +11,14 @@
  (λ ([x : CInt])
    (match x
      [y (ann y : CInt)]))
- : (C→ CInt Any))
+ : (C→ CInt CInt))
 
 (check-type (match 1
               [x (ann (+ x 2) : CInt)])
-            : Any
+            : CInt
             -> 3)
 
-(: f1 : (C→ Int Any))
+(: f1 : (C→ Int String))
 (define (f1 x)
   (match x
     [0 "zero"]
@@ -27,34 +27,34 @@
     [3 "three"]
     [4 "four"]
     [_ "n"]))
-(check-type (f1 0) : Any -> "zero")
-(check-type (f1 1) : Any -> "one")
-(check-type (f1 2) : Any -> "two")
-(check-type (f1 3) : Any -> "three")
-(check-type (f1 4) : Any -> "four")
-(check-type (f1 5) : Any -> "n")
-(check-type (f1 22) : Any -> "n")
-(check-type (f1 (if b1 2 3)) : Any -> (if b1 "two" "three"))
+(check-type (f1 0) : String -> "zero")
+(check-type (f1 1) : String -> "one")
+(check-type (f1 2) : String -> "two")
+(check-type (f1 3) : String -> "three")
+(check-type (f1 4) : String -> "four")
+(check-type (f1 5) : String -> "n")
+(check-type (f1 22) : String -> "n")
+(check-type (f1 (if b1 2 3)) : String -> (if b1 "two" "three"))
 
-(: f2 : (C→ CSymbol Any))
+(: f2 : (C→ CSymbol (U CSymbol)))
 (define (f2 x)
   (match x
     ['a 'b]
     ['b 'c]
     ['c 'a]))
-(check-type (f2 'a) : Any -> 'b)
-(check-type (f2 'b) : Any -> 'c)
-(check-type (f2 'c) : Any -> 'a)
+(check-type (f2 'a) : (U CSymbol) -> 'b)
+(check-type (f2 'b) : (U CSymbol) -> 'c)
+(check-type (f2 'c) : (U CSymbol) -> 'a)
 
-(: f3 : (C→ (CList CSymbol CInt) Any))
+(: f3 : (C→ (CList CSymbol CInt) (Term CInt)))
 (define (f3 x)
   (match x
     [(list 'a x) (ann x : CInt)]
     [(list 'b x) (ann x : CInt)]
     [(list 'c y) (ann y : CInt)]))
-(check-type (f3 (list 'a 1)) : Any -> 1)
-(check-type (f3 (list 'b 2)) : Any -> 2)
-(check-type (f3 (list 'c 3)) : Any -> 3)
+(check-type (f3 (list 'a 1)) : (Term CInt) -> 1)
+(check-type (f3 (list 'b 2)) : (Term CInt) -> 2)
+(check-type (f3 (list 'c 3)) : (Term CInt) -> 3)
 
 (check-type (match (list 1 '())
               [(list a (list b '()))
@@ -70,12 +70,13 @@
 
 (check-type (match (foo 1)
               [(foo x) (ann x : (Term CInt))])
-            : Any
+            : (Term CInt)
             -> 1)
 
 (struct bar foo ([x : CNum] [y : CNum] [z : CInt]) #:use-super-type)
 
-(: f4 : (C→ Foo Any))
+(: f4 : (C→ Foo (U (CList (Term CInt) Num Num (Term CInt))
+                   (CList (Term CInt)))))
 (define (f4 s)
   (match s
     [(bar a x y z)
@@ -89,17 +90,20 @@
       (ann a : (Term CInt)))]))
 
 (check-type (f4 (bar 1 2.5 3.5 6))
-            : Any
+            : (U (CList (Term CInt) Num Num (Term CInt))
+                 (CList (Term CInt)))
             -> (list 1 2.5 3.5 6))
 
 (check-type (f4 (foo 8))
-            : Any
+            : (U (CList (Term CInt) Num Num (Term CInt))
+                 (CList (Term CInt)))
             -> (list 8))
 
 (define iteb181 (if b1 8 1))
 
 (check-type (f4 (if b1 (foo 8) (bar 1 2.5 3.5 6)))
-            : Any
+            : (U (CList (Term CInt) Num Num (Term CInt))
+                 (CList (Term CInt)))
             -> (if b1
                    (list iteb181)
                    (list iteb181 2.5 3.5 6)))

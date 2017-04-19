@@ -1,7 +1,8 @@
 #lang turnstile
 
 (require typed/rosette/types
-         (postfix-in - racket))
+         (postfix-in - racket)
+         (only-in turnstile/examples/stlc+union+case if))
 
 (provide
  (typed-out
@@ -19,3 +20,4 @@
   [vector->list : (C→ (CMVectorof Bool) (CListof Bool))]
   [false? : (C→ Any CBool)]))
 
+(provide if)
