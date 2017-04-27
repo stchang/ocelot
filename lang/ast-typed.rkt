@@ -1,6 +1,6 @@
 #lang typed/rosette
 
-(require "util/extra-types.rkt"
+(require (except-in "util/extra-types.rkt" @)
          "util/define-lambda-app.rkt"
          "util/extra-forms.rkt"
          "util/struct.rkt"

@@ -63,23 +63,26 @@
             ((match-pattern-id-ref value) value))]
           [else value]))
 
-  ;; A PatInfo is a (StxListof (StxList Id TypeStx))
+  ;; A PatInfo is a
+  ;;   (StxList (StxListof (StxList Id TypeStx))
+  ;;            PropStx
+  ;;            ExprStx)
   (define-syntax-class pat-info
-    #:attributes [[x 1] [τ 1] maybe-vec]
-    [pattern [([x:id τ:expr] ...) maybe-vec]])
-  (define-syntax-rule (λ/pat-info v-pat τ-pat body ...)
-    (λ (v τ)
-      (syntax-parse (list v τ)
-        [[v-pat τ-pat] body ...])))
+    #:attributes [[x 1] [τ 1] pos-prop maybe-vec]
+    [pattern [([x:id τ:expr] ...) pos-prop maybe-vec]])
+  (define-syntax-rule (λ/pat-info v-pat τ-pat obj-pat body ...)
+    (λ (v τ obj)
+      (syntax-parse (list v τ obj)
+        [[v-pat τ-pat obj-pat] body ...])))
 
-  ;; map-app2 : A B (Listof [A B -> C]) -> (Listof C)
-  (define (map-app2 a b fs)
+  ;; map-app3 : A B C (Listof [A B C -> D]) -> (Listof D)
+  (define (map-app3 a b c fs)
     (for/list ([f (in-list fs)])
-      (f a b)))
+      (f a b c)))
 
   (define-syntax-class pat
     #:attributes [get-pat-info]
-    ;; get-pat-info : [TypeStx -> PatInfo]
+    ;; get-pat-info : [Stx TypeStx ObjStx -> PatInfo]
     [pattern :derived-pat]
     [pattern :literal-pat]
     [pattern :id-pat])
@@ -89,19 +92,19 @@
     #:datum-literals [_ ...]
     [pattern (~and x:id (~not (~or :match-pat-id ...)))
       #:attr get-pat-info
-      (λ/pat-info v τ #'[([x τ]) (vector-immutable- v)])])
+      (λ/pat-info v τ o #'[([x τ]) Prop/Top (vector-immutable- v)])])
 
   (define-syntax-class literal-pat
     #:attributes [get-pat-info]
     [pattern b:boolean
       #:attr get-pat-info
-      (λ/pat-info v τ #'[() (if- (eq?- v (quote- b)) #() #f)])]
+      (λ/pat-info v τ o #'[() Prop/Top (if- (eq?- v (quote- b)) #() #f)])]
     [pattern s:str
       #:attr get-pat-info
-      (λ/pat-info v τ #'[() (if- (eq?- v (quote- s)) #() #f)])]
+      (λ/pat-info v τ o #'[() Prop/Top (if- (eq?- v (quote- s)) #() #f)])]
     [pattern n:number
       #:attr get-pat-info
-      (λ/pat-info v τ #'[() (if- (eq?- v (quote- n)) #() #f)])]
+      (λ/pat-info v τ o #'[() Prop/Top (if- (eq?- v (quote- n)) #() #f)])]
     )
 
   (define-syntax-class derived-pat
@@ -117,8 +120,8 @@
     (define intro (make-syntax-introducer))
     (define stx* (intro stx))
     (define get-pat-info* (get-get-pat-info stx*))
-    (define (get-pat-info v τ)
-      (intro (get-pat-info* v τ)))
+    (define (get-pat-info v τ o)
+      (intro (get-pat-info* v τ o)))
     get-pat-info)
   )
 
@@ -129,11 +132,12 @@
 (define-typed-syntax match
   [(_ val:expr [pat:pat body:expr] ...) ≫
    [⊢ val ≫ val- ⇒ τ_val]
+   #:with obj (get-arg-obj #'val-)
    #:with tmp (generate-temporary #'val)
    #:with [p:pat-info ...]
-   (map-app2 #'tmp #'τ_val (attribute pat.get-pat-info))
+   (map-app3 #'tmp #'τ_val #'obj (attribute pat.get-pat-info))
    [[p.x ≫ x- : p.τ] ...
-    ⊢ body ≫ body- ⇒ τ_body]
+    ⊢ (with-occurrence-prop p.pos-prop body) ≫ body- ⇒ τ_body]
    ...
    #:with τ_out (type-merge* #'[τ_body ...])
    #:with failure-
@@ -179,13 +183,13 @@
 (define-syntax _
   (match-pattern-id
    (syntax-parser
-     [_ (λ/pat-info v τ #'[() #()])])))
+     [_ (λ/pat-info v τ o #'[() Prop/Top #()])])))
 
 (define-syntax var
   (match-pattern-id
    (syntax-parser
      [(_ x:id)
-      (λ/pat-info v τ #'[([x τ]) (vector-immutable- v)])])))
+      (λ/pat-info v τ o #'[([x τ]) Prop/Top (vector-immutable- v)])])))
 
 (define-syntax quote
   (macro/match-pattern-id
@@ -193,7 +197,7 @@
      [(_ datum) #'(quote* datum)])
    (syntax-parser
      [(_ datum)
-      (λ/pat-info v τ #'[() (if- (eq?- v (quote- datum)) #() #f)])])))
+      (λ/pat-info v τ o #'[() Prop/Top (if- (eq?- v (quote- datum)) #() #f)])])))
 
 (define-syntax and
   (macro/match-pattern-id
@@ -201,10 +205,11 @@
      [(_ e:expr ...) #'(and* e ...)])
    (syntax-parser
      [(_ p:pat ...)
-      (λ/pat-info v τ
+      (λ/pat-info v τ o
         #:with [sub:pat-info ...]
-        (map-app2 #'v #'τ (attribute p.get-pat-info))
+        (map-app3 #'v #'τ #'o (attribute p.get-pat-info))
         #'[([sub.x sub.τ] ... ...)
+           Prop/Top
            (maybe-vector-append- sub.maybe-vec ...)])])))
 
 (define-syntax or
@@ -213,10 +218,11 @@
      [(_ e:expr ...) #'(or* e ...)])
    (syntax-parser
      [(_ p:pat ...)
-      (λ/pat-info v τ
+      (λ/pat-info v τ o
         #:with [sub:pat-info ...]
-        (map-app2 #'v #'τ (attribute p.get-pat-info))
+        (map-app3 #'v #'τ #'o (attribute p.get-pat-info))
         #'[()
+           Prop/Top
            (if- (or- sub.maybe-vec ...) #() #f)])])))
 
 (define-syntax not
@@ -225,9 +231,9 @@
      [(_ e:expr) #'(app* not* e)])
    (syntax-parser
      [(_ p:pat)
-      (λ/pat-info v τ
-        #:with sub:pat-info ((attribute p.get-pat-info) #'v #'τ)
-        #'[() (if- (not- sub.maybe-vec) #() #f)])])))
+      (λ/pat-info v τ o
+        #:with sub:pat-info ((attribute p.get-pat-info) #'v #'τ #'o)
+        #'[() Prop/Top (if- (not- sub.maybe-vec) #() #f)])])))
 
 ;; ------------------------------------------------------------------------
 
@@ -261,7 +267,7 @@
    (syntax-parser
      [(_ p:pat ...)
       (define n (stx-length #'[p ...]))
-      (λ/pat-info v τ
+      (λ/pat-info v τ o
         (syntax-parse #'τ
           [(~CList τ_elem ...)
            #:when (stx-length=? #'[τ_elem ...] #'[p ...])
@@ -269,15 +275,17 @@
            (for/list ([get-pat-info (attribute p.get-pat-info)]
                       [τ_elem (in-list (stx->list #'[τ_elem ...]))]
                       [i (in-range n)])
-             (get-pat-info #`(list-ref v #,i) τ_elem))
+             (get-pat-info #`(list-ref v #,i) τ_elem #f))
            #'[([sub.x sub.τ] ... ...)
+              Prop/Top
               (maybe-vector-append- sub.maybe-vec ...)]]
           [_
            #:with [sub:pat-info ...]
            (for/list ([get-pat-info (in-list (attribute p.get-pat-info))]
                       [i (in-range n)])
-             (get-pat-info #`(list-ref v #,i) #'Any))
+             (get-pat-info #`(list-ref v #,i) #'Any #f))
            #`[([sub.x sub.τ] ... ...)
+              Prop/Top
               (and- (list?- v)
                     (=- #,n (length- v))
                     (maybe-vector-append- sub.maybe-vec ...))]]))])))
@@ -293,7 +301,7 @@
    (syntax-parser
      [(_ p:pat ...)
       (define n (stx-length #'[p ...]))
-      (λ/pat-info v τ
+      (λ/pat-info v τ o
         (syntax-parse #'τ
           [(~C× τ_elem ...)
            #:when (stx-length=? #'[τ_elem ...] #'[p ...])
@@ -301,8 +309,9 @@
            (for/list ([get-pat-info (attribute p.get-pat-info)]
                       [τ_elem (in-list (stx->list #'[τ_elem ...]))]
                       [i (in-range n)])
-             (get-pat-info #`(list-ref v #,i) τ_elem))
+             (get-pat-info #`(list-ref v #,i) τ_elem #f))
            #'[([sub.x sub.τ] ... ...)
+              Prop/Top
               (maybe-vector-append- sub.maybe-vec ...)]]))])))
 
 ;; ------------------------------------------------------------------------
@@ -327,7 +336,7 @@
         [(_ sub-pat:pat ...)
          #:fail-unless (= n (stx-length #'[sub-pat ...]))
          (format "expected ~v sub-patterns" n)
-         (λ/pat-info v τ
+         (λ/pat-info v τ o
            #:do [(define τ-concrete? (concrete? #'τ))]
            #:with [sub:pat-info ...]
            (for/list ([get-pat-info (in-list (attribute sub-pat.get-pat-info))]
@@ -336,8 +345,10 @@
              (get-pat-info #`(#,accessor v)
                            (if τ-concrete?
                                field-type
-                               (type-merge field-type field-type))))
+                               (type-merge field-type field-type))
+                           #f))
            #`[([sub.x sub.τ] ... ...)
+              Prop/Top
               (and- (#,predicate v)
                     (maybe-vector-append- sub.maybe-vec ...))])])))
   )
@@ -352,14 +363,15 @@
       [⊢ pred ≫ pred- ⇒ (~C→ τ_v _ : #:+ τ_v+)]
       [⊢ [accessor ≫ accessor- ⇒ (~C→ τ_in τ_out)] ...]
       [τ_v+ τ⊑ τ_in] ...
-      (λ/pat-info v τ
+      (λ/pat-info v τ o
         [τ_v τ⊑ τ]
         #:with [sub:pat-info ...]
         (for/list ([get-pat-info (in-list (attribute p.get-pat-info))]
                    [accessor- (in-list (stx->list #'[accessor- ...]))]
                    [τ_out (in-list (stx->list #'[τ_out ...]))])
-          (get-pat-info #`(#,accessor- v) τ_out))
+          (get-pat-info #`(#,accessor- v) τ_out #f))
         #`[([sub.x sub.τ] ... ...)
+           Prop/Top
            (and- (pred- v)
                  (maybe-vector-append- sub.maybe-vec ...))])])))
 
