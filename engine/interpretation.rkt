@@ -1,11 +1,7 @@
 #lang typed/rosette
 
-(require (only-in typed/rosette/base-forms unsafe-assign-type)
-         (only-in racket/base #%expression)
-         "../lang/util/match.rkt"
-         "../lang/util/struct.rkt"
-         "../lang/util/extra-types.rkt"
-         (except-in "../lang/util/extra-forms.rkt" and tup)
+(require "../lang/util/extra-types.rkt"
+         "../lang/util/extra-forms.rkt"
          "../lang/bounds.rkt" "../lang/universe.rkt" "matrix.rkt"
          (only-in "../lang/ast.rkt" CNode/Expr relation-arity)
          (prefix-in $ racket))
@@ -15,7 +11,7 @@
 ; pairs
 (struct interpretation
   ([universe : CUniverse]
-   [entries : (CListof (C× CNode/Expr CMatrix))])
+   [entries : (CListof (CPair CNode/Expr CMatrix))])
   #:transparent)
 
 ; receives an ast/node/relation and an uninterpreted bound
@@ -28,8 +24,7 @@
       U
       (for/list ([bnd (in-list (bounds-entries bounds))])
         (let* ([rel (bound-relation bnd)]
-               [size (assert-type (expt (universe-size U) (relation-arity rel))
-                                  : CNat)]
+               [size (expt (universe-size U) (relation-arity rel))]
                [mat
                 (cond [(equal? (bound-lower bnd) (bound-upper bnd))
                        (let ([members
@@ -50,7 +45,7 @@
                                           (let-symbolic* [r boolean?]
                                             r)]
                                          [else #f]))))])])
-          (tup rel mat))))))
+          (pair rel mat))))))
 
 (: interpretation-union :
    (C→* [] [] #:rest (CListof CInterpretation) CInterpretation))
@@ -59,26 +54,24 @@
     (interpretation
       U
       (for*/list ([i : CInterpretation (in-list interps)]
-                  [e : (C× CNode/Expr CMatrix) (in-list (interpretation-entries i))])
+                  [e : (CPair CNode/Expr CMatrix) (in-list (interpretation-entries i))])
         e))))
 
 (: interpretation->relations : (C→ CInterpretation Any))
 (define (interpretation->relations interp)
   (match interp
     [(interpretation U entries)
-     (for/hash ([pair (in-list entries)])
-       (unsafe-assign-type
-       (#%expression
-        (match pair
-         [(tup rel mat)
+     (for/hash ([p (in-list entries)])
+       (match p
+         [(pair rel mat)
           (let* ([contents (matrix-entries mat)]
                  [arity (matrix-entries-arity U contents)])
-            (tup rel
-                 #;(for/list ([x (in-list contents)]
-                            [i (in-naturals)]
-                            #:when x)
-                   (idx->tuple U arity i))
-                 (for/list ([x (in-list contents)]
-                            [i (in-naturals)])
-                   (idx->tuple U arity i))))]))
-       : (C× CNode/Expr Any)))]))
+            (if (andmap concrete-boolean? contents)
+                (tup rel
+                     (for/list ([x (in-list contents)]
+                                [i (in-naturals)]
+                                #:when x)
+                       (idx->tuple U arity i)))
+                (error 'interpretation->relations
+                  "matrix must be fully concrete\n  relation: ~v\n  matrix: ~v"
+                  rel mat)))]))]))

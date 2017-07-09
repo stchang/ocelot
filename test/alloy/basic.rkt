@@ -14,7 +14,7 @@
   [floor : Platform]
   [between : Platform Platform])
 
-(define: Man* (unsafe-assign-type Man : Node/Expr))
+(define: Man* (unsafe-assign-type Man : CNode/Expr))
 
 ; should be trivially sat
 (check-true

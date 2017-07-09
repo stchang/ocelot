@@ -1,8 +1,6 @@
 #lang typed/rosette
 
 (require turnstile/rackunit-typechecking
-         "../match.rkt"
-         "../struct.rkt"
          "struct-def.rkt")
 
 (define-symbolic b1 b2 boolean?)
@@ -73,7 +71,7 @@
             : (Term CInt)
             -> 1)
 
-(struct bar foo ([x : CNum] [y : CNum] [z : CInt]) #:use-super-type)
+(struct bar foo ([x : CNum] [y : CNum] [z : CInt]))
 
 (: f4 : (C→ Foo (U (CList (Term CInt) Num Num (Term CInt))
                    (CList (Term CInt)))))
@@ -99,12 +97,10 @@
                  (CList (Term CInt)))
             -> (list 8))
 
-(define iteb181 (if b1 8 1))
-
 (check-type (f4 (if b1 (foo 8) (bar 1 2.5 3.5 6)))
             : (U (CList (Term CInt) Num Num (Term CInt))
                  (CList (Term CInt)))
             -> (if b1
-                   (list iteb181)
-                   (list iteb181 2.5 3.5 6)))
+                   (list (if b1 8 1))
+                   (list (if b1 8 1) 2.5 3.5 6)))
 

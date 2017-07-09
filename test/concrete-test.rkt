@@ -1,7 +1,6 @@
 #lang typed/rosette
 
 (require "../ocelot.rkt" "util.rkt"
-         (only-in "../lang/util/extra-forms.rkt" exn:fail?)
          (only-in "../engine/matrix.rkt" Matrix)
          (only-in "../engine/matrix-ops.rkt" matrix/contains?)
          (only-in rosette/safe define-syntax-rule module+)

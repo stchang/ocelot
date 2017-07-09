@@ -1,10 +1,5 @@
 #lang typed/rosette
 
-(require "../extra-types.rkt"
-         "../define-lambda-app.rkt"
-         "../extra-forms.rkt"
-         )
-
 (: f : (C→ Int Int))
 (define f
   (λ (x) (g x x)))

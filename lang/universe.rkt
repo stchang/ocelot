@@ -1,8 +1,6 @@
 #lang typed/rosette
 
 (require "util/provide.rkt"
-         "util/define-lambda-app.rkt"
-         "util/struct.rkt"
          "util/extra-types.rkt"
          "util/extra-forms.rkt")
 

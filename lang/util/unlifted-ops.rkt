@@ -18,6 +18,7 @@
   [vector-ref : (C→ (CMVectorof Bool) CNat Bool)]
   [vector-set! : (C→ (CMVectorof Bool) CNat Bool CUnit)]
   [vector->list : (C→ (CMVectorof Bool) (CListof Bool))]
-  [false? : (C→ Any CBool)]))
+  [false? : (C→ Any CBool)]
+  [equal? : (C→ Any Any CBool)]))
 
 (provide if)

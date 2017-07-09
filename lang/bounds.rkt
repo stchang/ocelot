@@ -1,14 +1,9 @@
 #lang typed/rosette
 
-(require "../lang/util/struct.rkt"
-         "../lang/util/extra-forms.rkt"
-         (only-in "universe.rkt" CUniverse)
+(require (only-in "universe.rkt" CUniverse)
          (only-in "ast.rkt" CNode/Expr relation-arity))
 
 (provide (all-defined-out))
-
-(require (only-in racket/base begin-for-syntax) (for-syntax racket/base syntax/parse/debug))
-(begin-for-syntax (debug-syntax-parse!))
 
 ; A bound is a relation and two lists of tuples `lower` and `upper`.
 (struct bound
@@ -26,10 +21,10 @@
 (: make-bound : (C→ CNode/Expr (CListof (CListof CSymbol)) (CListof (CListof CSymbol)) CBound))
 (define (make-bound relation lower upper)
   (for ([t (in-list lower)])
-    (unless (and (list? t) (= (length t) (relation-arity relation)))
+    (unless (= (length t) (relation-arity relation))
       (raise-arguments-error 'make-bound "bounds must contain tuples" "lower" t)))
   (for ([t (in-list upper)])
-    (unless (and (list? t) (= (length t) (relation-arity relation)))
+    (unless (= (length t) (relation-arity relation))
       (raise-arguments-error 'make-bound "bounds must contain tuples" "upper" t)))
   (bound relation lower upper))
 

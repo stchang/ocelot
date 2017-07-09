@@ -7,11 +7,11 @@
          "../lang/ast.rkt" "../lib/simplify-solve.rkt")
 
 (define ast-cost*
-  (unsafe-assign-type ast-cost : (C→ Node/Expr Int)))
+  (unsafe-assign-type ast-cost : (C→ CNode/Expr CInt)))
 
 (define simplify/solve*
   (unsafe-assign-type simplify/solve
-                      : (C→ Node/Expr Node/Formula Node/Expr)))
+                      : (C→ CNode/Expr CNode/Formula CNode/Expr)))
 
 
 ; Some memory model relations that have rich type information:
@@ -19,11 +19,11 @@
 ; * Atomics ⊂ Writes
 ; * no Reads & Writes
 ; * po ⊂ (-> MemoryEvent MemoryEvent)
-(: Atomics : Node/Expr)
-(: Reads : Node/Expr)
-(: Writes : Node/Expr)
-(: MemoryEvent : Node/Expr)
-(: po : Node/Expr)
+(: Atomics : CNode/Expr)
+(: Reads : CNode/Expr)
+(: Writes : CNode/Expr)
+(: MemoryEvent : CNode/Expr)
+(: po : CNode/Expr)
 (define Atomics (declare-relation 1 "Atomics"))
 (define Reads (declare-relation 1 "Reads"))
 (define Writes (declare-relation 1 "Writes"))
@@ -31,7 +31,7 @@
 (define po (declare-relation 2 "po"))
 
 
-(: same-cost : (C→ Node/Expr Node/Expr Bool))
+(: same-cost : (C→ CNode/Expr CNode/Expr CBool))
 (define (same-cost e1 e2)
   (@= (ast-cost* e1) (ast-cost* e2)))
 

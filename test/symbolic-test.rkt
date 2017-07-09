@@ -28,7 +28,7 @@
 
 (define (test-+)
   (define E1 (thunk (grammar 2 (list +) (list A1 B1))))
-  
+
   (test-formula-solve U (= (E1) C1) [(A1 '((a) (b))) (B1 '((c) (d))) (C1 '((a) (b) (c) (d)))] #t)
   (test-formula-solve U (= (E1) C1) [(A1 '((a) (b))) (B1 '((c) (d))) (C1 '((a) (b) (c)))] #f)
   )

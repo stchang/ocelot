@@ -1,38 +1,30 @@
-;#lang racket
 #lang typed/rosette
 
-(require "../lang/util/extra-forms.rkt"
-         (only-in typed/rosette/base-forms unsafe-assign-type)
-         "../lang/universe.rkt" "matrix.rkt"
-         (prefix-in $ "../lang/util/unlifted-ops.rkt")
-         ;(only-in rosette and or not for/all for*/all)
-         ;(only-in rosette/base/core/bool && || => <=> !)
-         )
+(require "../lang/universe.rkt" "matrix.rkt"
+         (prefix-in $ "../lang/util/unlifted-ops.rkt"))
 
 (provide (all-defined-out))
 
 ;; ---------------------------------------------------------
-#|
-(: && : (C→* [] [] #:rest (CListof Bool) Bool))
-(define &&
-  (λ args (for/and ([arg (in-list args)]) arg)))
 
-(: || : (C→* [] [] #:rest (CListof Bool) Bool))
-(define ||
-  (λ args (for/or ([arg (in-list args)]) arg)))
-|#
-;; ---------------------------------------------------------
-
-(: matrix/nary-op : (C→ CUniverse
-                        (→ CUniverse Matrix Matrix Matrix)
-                        (CListof Matrix)
-                        Matrix))
+(: matrix/nary-op : (Ccase->
+                     (C→ CUniverse
+                         (Ccase->
+                          (C→ CUniverse CMatrix CMatrix CMatrix)
+                          (C→ CUniverse Matrix Matrix Matrix))
+                         (CListof CMatrix)
+                         CMatrix)
+                     (C→ CUniverse
+                         (→ CUniverse Matrix Matrix Matrix)
+                         (CListof Matrix)
+                         Matrix)))
 (define (matrix/nary-op universe op args)
-  (for/fold ([A : Matrix (first args)])
+  (for/fold ([A (first args)])
             ([B (in-list (rest args))])
     (op universe A B)))
 
-(: matrix/and : (C→ CUniverse Matrix Matrix Matrix))
+(: matrix/and : (Ccase-> (C→ CUniverse CMatrix CMatrix CMatrix)
+                         (C→ CUniverse Matrix Matrix Matrix)))
 (define (matrix/and universe A B)
   (for*/all ([A (matrix-entries A)] [B (matrix-entries B)])
     (matrix (for/list ([a (in-list A)] [b (in-list B)])
@@ -45,7 +37,8 @@
     (matrix (for/list ([a (in-list A)] [b (in-list B)])
               (or a b)))))
 
-(: matrix/difference : (C→ CUniverse Matrix Matrix Matrix))
+(: matrix/difference : (Ccase-> (C→ CUniverse CMatrix CMatrix CMatrix)
+                                (C→ CUniverse Matrix Matrix Matrix)))
 (define (matrix/difference universe A B)
   (for*/all ([A (matrix-entries A)][B (matrix-entries B)])
     (matrix (for/list ([a (in-list A)] [b (in-list B)])
@@ -79,14 +72,16 @@
                         ($vector-set! res k (|| ($vector-ref res k) retVal)))))))))))
       (matrix ($vector->list res)))))
 
-(: matrix/cross : (C→ CUniverse Matrix Matrix Matrix))
+(: matrix/cross : (Ccase-> (C→ CUniverse CMatrix CMatrix CMatrix)
+                           (C→ CUniverse Matrix Matrix Matrix)))
 (define (matrix/cross universe A B)
   (for*/all ([A (matrix-entries A)] [B (matrix-entries B)])
     (matrix (for*/list ([a : Bool (in-list A)]
                         [b : Bool (in-list B)])
               (and a b)))))
 
-(: matrix/transpose : (C→ CUniverse Matrix Matrix))
+(: matrix/transpose : (Ccase-> (C→ CUniverse CMatrix CMatrix)
+                               (C→ CUniverse Matrix Matrix)))
 (define (matrix/transpose universe A)
   (for/all ([A (matrix-entries A)])
     (let* ([univSize (universe-size universe)])
@@ -94,26 +89,26 @@
                           [j : CNat (in-range univSize)])
                 (list-ref A (+ (* univSize j) i)))))))
 
-(: matrix/closure : (C→ CUniverse Matrix Matrix))
+(: matrix/closure : (Ccase-> (C→ CUniverse CMatrix CMatrix)
+                             (C→ CUniverse Matrix Matrix)))
 (define (matrix/closure universe A)
   (let ([univSize (universe-size universe)])
     (for/all ([A (matrix-entries A)])
-      (let loop ([Y : (CListof Bool) A] [i : CNat 1]) -> Matrix
+      (let loop ([Y : (CListof Bool) A] [i : CNat 1])
         (let ([rY (matrix Y)])
           (if (>= i univSize)
               rY
-              ;; TODO: (matrix/dot CUniverse CMatrix CMatrix) should have
-              ;; type CMatrix
               (let ([Y.Y   (matrix/dot universe rY rY)])
-                (if (for/and ([y (in-list (matrix-entries Y.Y))]) ($false? y))
+                (if (ann
+                     (for/and ([y (in-list (matrix-entries Y.Y))]) ($false? y))
+                     : CBool)
                     rY
-                    ;; TODO: (matrix/or CUniverse CMatrix CMatrix) should
-                    ;; have type CMatrix
                     (let ([Y∪Y.Y (matrix/or universe rY Y.Y)])
                       (loop (matrix-entries Y∪Y.Y) (* 2 i)))))))))))
 
 ; evaluate D <: A
-(: matrix/domain : (C→ CUniverse Matrix Matrix Matrix))
+(: matrix/domain : (Ccase-> (C→ CUniverse CMatrix CMatrix CMatrix)
+                            (C→ CUniverse Matrix Matrix Matrix)))
 (define (matrix/domain universe D A)
   (let ([univSize (universe-size universe)])
     (for*/all ([A (matrix-entries A)][Ds (matrix-entries D)])
@@ -124,7 +119,8 @@
                   (and a (list-ref Ds ($quotient i denomA)))))))))
 
 ; evaluate A :> R
-(: matrix/range : (C→ CUniverse Matrix Matrix Matrix))
+(: matrix/range : (Ccase-> (C→ CUniverse CMatrix CMatrix CMatrix)
+                           (C→ CUniverse Matrix Matrix Matrix)))
 (define (matrix/range universe A R)
   (let ([univSize (universe-size universe)])
     (for*/all ([A (matrix-entries A)] [Rs (matrix-entries R)])
@@ -151,7 +147,7 @@
 (: matrix/one? : (C→ CUniverse Matrix Bool))
 (define (matrix/one? universe A)
   (for/all ([A (matrix-entries A)])
-    (let loop ([disj : Bool #f] [pred : Bool #t] [A : (CListof Bool) A]) -> Bool
+    (let loop ([disj : Bool #f] [pred : Bool #t] [A : (CListof Bool) A])
       (cond
         [(null? A) (and pred disj)]
         [else (let* ([a (car A)]

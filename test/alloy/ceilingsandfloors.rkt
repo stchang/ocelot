@@ -18,12 +18,12 @@
   [ceiling : Platform]
   [floor   : Platform])
 
-(define: Man* (unsafe-assign-type Man : Node/Expr))
+(define: Man* (unsafe-assign-type Man : CNode/Expr))
 
 ; pred Above[m, n: Man] {m.floor = n.ceiling}
 (define (Above m n) (= (join m floor) (join n ceiling)))
 
-(define: Above* (unsafe-assign-type Above : (C→ Node/Expr Node/Expr Node/Formula)))
+(define: Above* (unsafe-assign-type Above : (C→ CNode/Expr CNode/Expr CNode/Formula)))
 
 ; fact PaulSimon {all m: Man | some n: Man | n.Above[m]}
 (define PaulSimon
@@ -38,7 +38,7 @@
  (alloy-check BelowToo (scope 2)))
 
 ; pred Geometry {no m: Man | m.floor = m.ceiling}
-(define Geometry (no ([m Man*]) (unsafe-assign-type (= (join m floor) (join m ceiling)) : Node/Formula)))
+(define Geometry (no ([m Man*]) (unsafe-assign-type (= (join m floor) (join m ceiling)) : CNode/Formula)))
 
 ; assert BelowToo' { Geometry => (all m: Man | some n: Man | m.Above[n]) }
 (define BelowToo^
@@ -60,7 +60,7 @@
        (and (! (= m n))
             (or (= (join m floor) (join n floor))
                 (= (join m ceiling) (join n ceiling))))
-       : Node/Formula)))
+       : CNode/Formula)))
 
 ; assert BelowToo'' { NoSharing => (all m: Man | some n: Man | m.Above[n]) }
 (define BelowToo^^

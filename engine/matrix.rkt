@@ -1,8 +1,6 @@
 #lang typed/rosette
 
-(require "../lang/util/struct.rkt"
-         "../lang/util/extra-forms.rkt"
-         (prefix-in $ racket)
+(require (prefix-in $ racket)
          "../lang/universe.rkt")
 (provide (all-defined-out))
 

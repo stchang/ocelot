@@ -1,9 +1,6 @@
 #lang typed/rosette
 
 (require (only-in typed/rosette/base-forms unsafe-assign-type)
-         (only-in rosette/safe #%expression)
-         (except-in "../lang/util/extra-forms.rkt" and tup)
-         "../lang/util/match.rkt"
          racket/require
          (matching-identifiers-in #rx"^node/.+$" "../lang/ast.rkt")
          (only-in "../lang/ast.rkt"
@@ -18,79 +15,115 @@
 (define-type-alias RelationHash
   (CHashTable CNode/Expr CMatrix))
 
-(define-type-alias CacheHash
-  (CHashTable (CU CNode/Expr CNode/Formula) (U Matrix Bool)))
-(define-type-alias Cache
-  (CU CacheHash CFalse))
+(define-type-alias ExprCacheHash
+  (CHashTable CNode/Expr CMatrix))
+(define-type-alias FormulaCacheHash
+  (CHashTable CNode/Formula Bool))
+(define-type-alias ExprCache
+  (CU ExprCacheHash CFalse))
+(define-type-alias FormulaCache
+  (CU FormulaCacheHash CFalse))
 
-(: interpret : (C→ CNode/Formula CBounds Bool))
+(: expr-cache-copy : (C→ ExprCache ExprCache))
+(define (expr-cache-copy expr-cache)
+  (and (not (false? expr-cache)) (hash-copy expr-cache)))
+
+(: formula-cache-copy : (C→ FormulaCache FormulaCache))
+(define (formula-cache-copy formula-cache)
+  (and (not (false? formula-cache)) (hash-copy formula-cache)))
+
+;; ------------------------------------------------------------------------
+
+(: interpret : (Ccase-> (C→ CNode/Expr CBounds CMatrix)
+                        (C→ CNode/Formula CBounds Bool)))
 (define (interpret formula bounds)
   (let ([interp (instantiate-bounds bounds)])
-    (interpret* formula interp)))
+    (if (node/expr? formula)
+        (interpret* formula interp)
+        (interpret* formula interp))))
 
-(: interpret* : (C→ CNode/Formula CInterpretation [#:cache? CBool] Bool))
+(: interpret* :
+   (Ccase-> (C→ CNode/Expr CInterpretation [#:cache? CBool] CMatrix)
+            (C→ CNode/Formula CInterpretation [#:cache? CBool] Bool)))
 (define (interpret* formula interp #:cache? [cache? #f])
   (match interp
     [(interpretation universe entries)
      (let ([relations (make-hash entries)])
-       (assert-type
-        (interpret-rec formula
-                       universe
-                       relations
-                       (if cache? (ann (make-hash) : CacheHash) #f))
-        : Bool))]))
+       (if (node/expr? formula)
+           (interpret-rec formula
+                          universe
+                          relations
+                          (if cache? (ann (make-hash) : ExprCacheHash) #f)
+                          (if cache? (ann (make-hash) : FormulaCacheHash) #f))
+           (interpret-rec formula
+                          universe
+                          relations
+                          (if cache? (ann (make-hash) : ExprCacheHash) #f)
+                          (if cache? (ann (make-hash) : FormulaCacheHash) #f))))]))
 
 ;; the hash table is mutable!
-(: interpret-rec : (C→ (CU CNode/Expr CNode/Formula) CUniverse RelationHash Cache (U Matrix Bool)))
-(define (interpret-rec formula universe relations cache)
-  ($if cache
-       (hash-ref! (unsafe-assign-type (#%expression cache) : CacheHash)
-                  formula
-                  (λ () (interpret-body formula universe relations cache)))
-       (interpret-body formula universe relations cache)))
+(: interpret-rec :
+   (Ccase->
+    (C→ CNode/Expr CUniverse RelationHash ExprCache FormulaCache CMatrix)
+    (C→ CNode/Formula CUniverse RelationHash ExprCache FormulaCache Bool)))
+(define (interpret-rec formula universe relations expr-cache formula-cache)
+  (if (node/expr? formula)
+      (if (not (false? expr-cache))
+          (hash-ref! expr-cache
+                     formula
+                     (λ () (interpret-body formula universe relations expr-cache formula-cache)))
+          (interpret-body formula universe relations expr-cache formula-cache))
+      (if (not (false? formula-cache))
+          (hash-ref! formula-cache
+                     formula
+                     (λ () (interpret-body formula universe relations expr-cache formula-cache)))
+          (interpret-body formula universe relations expr-cache formula-cache))))
 
 (: interpret-body :
-   (C→ (CU CNode/Expr CNode/Formula) CUniverse RelationHash Cache (U Matrix Bool)))
-(define (interpret-body formula universe relations cache)
+   (Ccase->
+    (C→ CNode/Expr CUniverse RelationHash ExprCache FormulaCache CMatrix)
+    (C→ CNode/Formula CUniverse RelationHash ExprCache FormulaCache Bool)))
+(define (interpret-body formula universe relations expr-cache formula-cache)
   (match formula
     [(node/expr/op arity args)
      (let ([args* (for/list ([a (in-list args)])
-                    (interpret-rec a universe relations cache))])
+                    (interpret-rec a universe relations expr-cache formula-cache))])
        (interpret-expr-op universe
-                          (unsafe-assign-type (#%expression formula) : CNode/Expr)
+                          formula
                           args*))]
     [(node/expr/relation arity name)
      (hash-ref relations
-               (unsafe-assign-type (#%expression formula) : CNode/Expr)
+               formula
        (λ () (error 'interpret "unbound relation ~a" formula)))]
     [(node/expr/constant arity type)
      (interpret-constant universe type)]
     [(node/expr/comprehension arity decls f)
      (let ([decls* (for/list ([d (in-list decls)])
-                     (list (proj d 0) (interpret-rec (proj d 1) universe relations cache)))])
-       (interpret-comprehension universe relations decls* f cache))]
+                     (pair (car d) (interpret-rec (cdr d) universe relations expr-cache formula-cache)))])
+       (interpret-comprehension universe relations decls* f expr-cache formula-cache))]
     [(node/formula/op args)
-     (interpret-formula-op universe relations formula args cache)]
+     (interpret-formula-op universe relations formula args expr-cache formula-cache)]
     [(node/formula/quantified quantifier decls f)
      (let ([decls* (for/list ([d (in-list decls)])
-                     (list (proj d 0) (interpret-rec (proj d 1) universe relations cache)))])
-       (interpret-quantifier universe relations quantifier decls* f cache))]
+                     (pair (car d) (interpret-rec (cdr d) universe relations expr-cache formula-cache)))])
+       (interpret-quantifier universe relations quantifier decls* f expr-cache formula-cache))]
     [(node/formula/multiplicity mult expr)
-     (let ([expr* (interpret-rec expr universe relations cache)])
+     (let ([expr* (interpret-rec expr universe relations expr-cache formula-cache)])
        (interpret-multiplicity universe mult expr*))]))
 
 
-(: interpret-constant : (C→ CUniverse CSymbol Matrix))
+(: interpret-constant : (C→ CUniverse CSymbol CMatrix))
 (define (interpret-constant universe type)
   (match type
     ['none (matrix (make-list (universe-size universe) #f))]
     ['univ (matrix (make-list (universe-size universe) #t))]
     ['iden (let ([size (universe-size universe)])
-             (matrix (for*/list ([i (in-range size)] [j (in-range size)])
+             (matrix (for*/list ([i : CNat (in-range size)]
+                                 [j : CNat (in-range size)])
                        (= i j))))]))
 
 
-(: interpret-expr-op : (C→ CUniverse CNode/Expr (Listof Matrix) Matrix))
+(: interpret-expr-op : (C→ CUniverse CNode/Expr (CListof CMatrix) CMatrix))
 (define (interpret-expr-op universe op args)
   (match op
     [(? node/expr/op/+?)
@@ -117,27 +150,49 @@
      (matrix/range universe (first args) (second args))]))
 
 
-(: interpret-comprehension : (C→ CUniverse RelationHash Any Any Cache Matrix))
-(define (interpret-comprehension universe relations decls f cache)
-  (define usize (universe-size universe))
-  (define (comprehension* decls pre)
-    (if (null? decls)
-        (list (and pre (interpret-rec f universe relations (and cache (hash-copy cache)))))
-        (match-let ([(list v r) (car decls)])
-          (append* (for/list ([i usize][val (matrix-entries r)])
-                     (if ($false? val)
-                         (make-list (expt usize (sub1 (length decls))) #f)
-                         (begin
-                           (hash-set! relations v (singleton-matrix universe i))
-                           (begin0
-                             (comprehension* (cdr decls) (and pre val))
-                             (hash-remove! relations v)))))))))
-  (matrix (comprehension* decls #t)))
+(: interpret-comprehension :
+   (C→ CUniverse
+       RelationHash
+       (CListof (CPair CNode/Expr CMatrix))
+       CNode/Formula
+       ExprCache
+       FormulaCache
+       CMatrix))
+(define (interpret-comprehension universe relations decls f expr-cache formula-cache)
+  (let ([usize (universe-size universe)])
+    (letrec
+        ([[comprehension* : (C→ (CListof (CPair CNode/Expr CMatrix))
+                                Bool
+                                (CListof Bool))]
+          (λ (decls pre)
+            (if (null? decls)
+                (list (and pre
+                           (interpret-rec f universe relations
+                                          (expr-cache-copy expr-cache)
+                                          (formula-cache-copy formula-cache))))
+                (match-let ([(pair v r) (car decls)])
+                  (append* (for/list ([i (in-range usize)]
+                                      [val (in-list (matrix-entries r))])
+                             (if ($false? val)
+                                 (make-list (expt usize (length (cdr decls)))
+                                            #f)
+                                 (begin
+                                   (hash-set! relations v (singleton-matrix universe i))
+                                   (begin0
+                                     (comprehension* (cdr decls) (and pre val))
+                                     (hash-remove! relations v)))))))))])
+      (matrix (comprehension* decls #t)))))
 
 
-(: interpret-formula-short-circuit : (C→ Any Any Any Any Any Bool))
+(: interpret-formula-short-circuit :
+   (C→ (C→ CNode/Formula Bool)
+       (CListof CNode/Formula)
+       (C→ Bool Bool Bool)
+       CBool
+       CBool
+       Bool))
 (define (interpret-formula-short-circuit rec args op iden !iden)
-  (let loop ([args args] [val iden])
+  (let loop ([args : (CListof CNode/Formula) args] [val : Bool iden])
     (if (null? args)
         val
         (let ([v (op val (rec (car args)))])
@@ -145,55 +200,92 @@
               !iden
               (loop (cdr args) v))))))
 
-(: interpret-formula-op : (C→ CUniverse RelationHash Any Any Cache Bool))
-(define (interpret-formula-op universe relations op args cache)
-  (define rec (curryr interpret-rec universe relations cache))
-  (match op
-    [(? node/formula/op/&&?)
-     (interpret-formula-short-circuit rec args && #t #f)]
-    [(? node/formula/op/||?)
-     (interpret-formula-short-circuit rec args || #f #t)]
-    [(? node/formula/op/=>?)
-     (or (not (rec (first args))) (rec (second args)))]
-    [_ (let ([args ($map rec args)])
-         (match op
-           [(? node/formula/op/in?)
-            (let ([A (first args)] [B (second args)])
-              (matrix/subset? universe A B))]
-           [(? node/formula/op/=?)
-            (let ([A (first args)] [B (second args)])
-              (matrix/equal? universe A B))]
-           [(? node/formula/op/!?)
-            (not (first args))]))]))
+(: interpret-formula-op :
+   (C→ CUniverse RelationHash
+       CNode/Formula
+       (CListof (CU CNode/Formula CNode/Expr))
+       ExprCache
+       FormulaCache
+       Bool))
+(define (interpret-formula-op universe relations op args expr-cache formula-cache)
+  (let ([rec  (partialr interpret-rec universe relations expr-cache formula-cache)])
+    (match op
+      [(? node/formula/op/&&?)
+       (let ([args (unsafe-assign-type args : (CListof CNode/Formula))])
+         (interpret-formula-short-circuit rec args && #t #f))]
+      [(? node/formula/op/||?)
+       (let ([args (unsafe-assign-type args : (CListof CNode/Formula))])
+         (interpret-formula-short-circuit rec args || #f #t))]
+      [(? node/formula/op/=>?)
+       (let ([args (unsafe-assign-type args : (CListof CNode/Formula))])
+         (or (not (rec (first args))) (rec (second args))))]
+      [_ (let ([args (for/list ([arg (in-list args)])
+                       (if (node/expr? arg)
+                           (rec arg)
+                           (rec arg)))])
+           (match op
+             [(? node/formula/op/in?)
+              (let ([A (first args)] [B (second args)])
+                (if (and (matrix? A) (matrix? B))
+                    (matrix/subset? universe A B)
+                    (error 'interpret-in "bad")))]
+             [(? node/formula/op/=?)
+              (let ([A (first args)] [B (second args)])
+                (if (and (matrix? A) (matrix? B))
+                    (matrix/equal? universe A B)
+                    (error 'interpret-in "bad")))]
+             [(? node/formula/op/!?)
+              (not (first args))]))])))
 
 
 ; quantifier: 'all or 'some
-; decls: (listof (list ast/node/relation matrix?)) binds the domains of the quantified variables
+; decls: (listof (cons ast/node/relation matrix?)) binds the domains of the quantified variables
 ; f: the predicate
-(: interpret-quantifier : (C→ CUniverse RelationHash Any Any Any Any Matrix))
-(define (interpret-quantifier universe relations quantifier decls f cache)
-  (define usize (universe-size universe))
-  (define (evaluate-quantifier op conn)
-    (define (rec decls)
-      (if (null? decls)
-          (interpret-rec f universe relations (and cache (hash-copy cache)))
-          (match-let ([(list v r) (car decls)])
-            (apply op (for/list ([i usize][val (matrix-entries r)] #:unless ($false? val))
-                        (hash-set! relations v (singleton-matrix universe i))
-                        (begin0
-                          (conn val (rec (cdr decls)))
-                          (hash-remove! relations v)))))))
-    (rec decls))
-  ;; TODO: This should not be (case .... ['sym ....]).
-  (case quantifier
-    ['all  (evaluate-quantifier && =>)]
-    ['some (evaluate-quantifier || &&)]))
+(: interpret-quantifier :
+   (C→ CUniverse
+       RelationHash
+       Any
+       (CListof (CPair CNode/Expr CMatrix))
+       CNode/Formula
+       ExprCache
+       FormulaCache
+       Bool))
+(define (interpret-quantifier universe relations quantifier decls f expr-cache formula-cache)
+  (let ([usize (universe-size universe)])
+    (letrec
+        ([(evaluate-quantifier : (C→ (C→* [] [] #:rest (CListof Bool) Bool)
+                                     (C→ Bool Bool Bool)
+                                     Bool))
+          (λ (op conn)
+            (letrec
+                ([(rec : (C→ (CListof (CPair CNode/Expr CMatrix)) Bool))
+                  (λ (decls)
+                    (if (null? decls)
+                        (interpret-rec f universe relations
+                                       (expr-cache-copy expr-cache)
+                                       (formula-cache-copy formula-cache))
+                        (match-let ([(pair v r) (car decls)])
+                          (apply
+                           op
+                           (for/list ([i (in-range usize)]
+                                      [val (in-list (matrix-entries r))]
+                                      #:unless ($false? val))
+                             (begin
+                               (hash-set! relations v (singleton-matrix universe i))
+                               (begin0
+                                 (conn val (rec (cdr decls)))
+                                 (hash-remove! relations v))))))))])
+              (rec decls)))])
+      (match quantifier
+        ['all  (evaluate-quantifier && =>)]
+        ['some (evaluate-quantifier || &&)]))))
 
 
-(: interpret-multiplicity : (C→ CUniverse CSymbol Matrix Bool))
+(: interpret-multiplicity : (C→ CUniverse CSymbol CMatrix Bool))
 (define (interpret-multiplicity universe mult expr)
   (match mult
     ['one  (matrix/one? universe expr)]
     ['no   (not (matrix/some? universe expr))]
     ['some (matrix/some? universe expr)]
     ['lone (or (not (matrix/some? universe expr)) (matrix/one? universe expr))]))
+

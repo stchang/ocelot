@@ -70,11 +70,11 @@
   ; sig A { f: B } means that all a: A | one a.f
   (define mults
     (for/list ([s (sigs)] #:when (> (length (sig-type s)) 1))
-      (all ([x (unsafe-assign-type (car (sig-type s)) : Node/Expr)])
+      (all ([x (unsafe-assign-type (car (sig-type s)) : CNode/Expr)])
        (unsafe-assign-type
-        (and (one (unsafe-assign-type (join x (sig-relation s)) : Node/Expr))
+        (and (one (unsafe-assign-type (join x (sig-relation s)) : CNode/Expr))
              (in (join x (sig-relation s)) (fold-op (cdr (sig-type s)) ->)))
-        : Node/Formula))))
+        : CNode/Formula))))
   (alloy-scope (bounds (universe atoms) bnds) (append domain mults)))
 
 
