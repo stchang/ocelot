@@ -163,8 +163,9 @@
     (letrec
         ([[comprehension* : (C→ (CListof (CPair CNode/Expr CMatrix))
                                 Bool
+                                RelationHash
                                 (CListof Bool))]
-          (λ (decls pre)
+          (λ (decls pre relations)
             (if (null? decls)
                 (list (and pre
                            (interpret-rec f universe relations
@@ -179,9 +180,9 @@
                                  (begin
                                    (hash-set! relations v (singleton-matrix universe i))
                                    (begin0
-                                     (comprehension* (cdr decls) (and pre val))
+                                     (comprehension* (cdr decls) (and pre val) relations)
                                      (hash-remove! relations v)))))))))])
-      (matrix (comprehension* decls #t)))))
+      (matrix (comprehension* decls #t relations)))))
 
 
 (: interpret-formula-short-circuit :
@@ -255,11 +256,12 @@
     (letrec
         ([(evaluate-quantifier : (C→ (C→* [] [] #:rest (CListof Bool) Bool)
                                      (C→ Bool Bool Bool)
+                                     RelationHash
                                      Bool))
-          (λ (op conn)
+          (λ (op conn relations)
             (letrec
-                ([(rec : (C→ (CListof (CPair CNode/Expr CMatrix)) Bool))
-                  (λ (decls)
+                ([(rec : (C→ (CListof (CPair CNode/Expr CMatrix)) RelationHash Bool))
+                  (λ (decls relations)
                     (if (null? decls)
                         (interpret-rec f universe relations
                                        (expr-cache-copy expr-cache)
@@ -273,12 +275,12 @@
                              (begin
                                (hash-set! relations v (singleton-matrix universe i))
                                (begin0
-                                 (conn val (rec (cdr decls)))
+                                 (conn val (rec (cdr decls) relations))
                                  (hash-remove! relations v))))))))])
-              (rec decls)))])
+              (rec decls relations)))])
       (match quantifier
-        ['all  (evaluate-quantifier && =>)]
-        ['some (evaluate-quantifier || &&)]))))
+        ['all  (evaluate-quantifier && => relations)]
+        ['some (evaluate-quantifier || && relations)]))))
 
 
 (: interpret-multiplicity : (C→ CUniverse CSymbol CMatrix Bool))
