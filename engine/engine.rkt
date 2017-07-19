@@ -34,8 +34,8 @@
 
 ;; ------------------------------------------------------------------------
 
-(: interpret : (Ccase-> (C→ CNode/Expr CBounds CMatrix)
-                        (C→ CNode/Formula CBounds Bool)))
+(: interpret : (Ccase-> (C→/conc CNode/Expr CBounds CMatrix)
+                        (C→/conc CNode/Formula CBounds Bool)))
 (define (interpret formula bounds)
   (let ([interp (instantiate-bounds bounds)])
     (if (node/expr? formula)
@@ -43,8 +43,8 @@
         (interpret* formula interp))))
 
 (: interpret* :
-   (Ccase-> (C→ CNode/Expr CInterpretation [#:cache? CBool] CMatrix)
-            (C→ CNode/Formula CInterpretation [#:cache? CBool] Bool)))
+   (Ccase-> (C→/conc CNode/Expr CInterpretation [#:cache? CBool] CMatrix)
+            (C→/conc CNode/Formula CInterpretation [#:cache? CBool] Bool)))
 (define (interpret* formula interp #:cache? [cache? #f])
   (match interp
     [(interpretation universe entries)
@@ -64,25 +64,25 @@
 ;; the hash table is mutable!
 (: interpret-rec :
    (Ccase->
-    (C→ CNode/Expr CUniverse RelationHash ExprCache FormulaCache CMatrix)
-    (C→ CNode/Formula CUniverse RelationHash ExprCache FormulaCache Bool)))
+    (C→/conc CNode/Expr CUniverse RelationHash ExprCache FormulaCache CMatrix)
+    (C→/conc CNode/Formula CUniverse RelationHash ExprCache FormulaCache Bool)))
 (define (interpret-rec formula universe relations expr-cache formula-cache)
   (if (node/expr? formula)
       (if (not (false? expr-cache))
           (hash-ref! expr-cache
                      formula
-                     (λ () (interpret-body formula universe relations expr-cache formula-cache)))
+                     (λ/conc () (interpret-body formula universe relations expr-cache formula-cache)))
           (interpret-body formula universe relations expr-cache formula-cache))
       (if (not (false? formula-cache))
           (hash-ref! formula-cache
                      formula
-                     (λ () (interpret-body formula universe relations expr-cache formula-cache)))
+                     (λ/conc () (interpret-body formula universe relations expr-cache formula-cache)))
           (interpret-body formula universe relations expr-cache formula-cache))))
 
 (: interpret-body :
    (Ccase->
-    (C→ CNode/Expr CUniverse RelationHash ExprCache FormulaCache CMatrix)
-    (C→ CNode/Formula CUniverse RelationHash ExprCache FormulaCache Bool)))
+    (C→/conc CNode/Expr CUniverse RelationHash ExprCache FormulaCache CMatrix)
+    (C→/conc CNode/Formula CUniverse RelationHash ExprCache FormulaCache Bool)))
 (define (interpret-body formula universe relations expr-cache formula-cache)
   (match formula
     [(node/expr/op arity args)
@@ -151,19 +151,19 @@
 
 
 (: interpret-comprehension :
-   (C→ CUniverse
-       RelationHash
-       (CListof (CPair CNode/Expr CMatrix))
-       CNode/Formula
-       ExprCache
-       FormulaCache
-       CMatrix))
+   (C→/conc CUniverse
+            RelationHash
+            (CListof (CPair CNode/Expr CMatrix))
+            CNode/Formula
+            ExprCache
+            FormulaCache
+            CMatrix))
 (define (interpret-comprehension universe relations decls f expr-cache formula-cache)
   (let ([usize (universe-size universe)])
     (letrec
-        ([[comprehension* : (C→ (CListof (CPair CNode/Expr CMatrix))
-                                Bool
-                                (CListof Bool))]
+        ([[comprehension* : (C→/conc (CListof (CPair CNode/Expr CMatrix))
+                                     Bool
+                                     (CListof Bool))]
           (λ (decls pre)
             (if (null? decls)
                 (list (and pre
@@ -201,12 +201,12 @@
               (loop (cdr args) v))))))
 
 (: interpret-formula-op :
-   (C→ CUniverse RelationHash
-       CNode/Formula
-       (CListof (CU CNode/Formula CNode/Expr))
-       ExprCache
-       FormulaCache
-       Bool))
+   (C→/conc CUniverse RelationHash
+            CNode/Formula
+            (CListof (CU CNode/Formula CNode/Expr))
+            ExprCache
+            FormulaCache
+            Bool))
 (define (interpret-formula-op universe relations op args expr-cache formula-cache)
   (let ([rec  (partialr interpret-rec universe relations expr-cache formula-cache)])
     (match op
@@ -242,23 +242,23 @@
 ; decls: (listof (cons ast/node/relation matrix?)) binds the domains of the quantified variables
 ; f: the predicate
 (: interpret-quantifier :
-   (C→ CUniverse
-       RelationHash
-       Any
-       (CListof (CPair CNode/Expr CMatrix))
-       CNode/Formula
-       ExprCache
-       FormulaCache
-       Bool))
+   (C→/conc CUniverse
+            RelationHash
+            Any
+            (CListof (CPair CNode/Expr CMatrix))
+            CNode/Formula
+            ExprCache
+            FormulaCache
+            Bool))
 (define (interpret-quantifier universe relations quantifier decls f expr-cache formula-cache)
   (let ([usize (universe-size universe)])
     (letrec
-        ([(evaluate-quantifier : (C→ (C→* [] [] #:rest (CListof Bool) Bool)
-                                     (C→ Bool Bool Bool)
-                                     Bool))
+        ([(evaluate-quantifier : (C→/conc (C→* [] [] #:rest (CListof Bool) Bool)
+                                          (C→ Bool Bool Bool)
+                                          Bool))
           (λ (op conn)
             (letrec
-                ([(rec : (C→ (CListof (CPair CNode/Expr CMatrix)) Bool))
+                ([(rec : (C→/conc (CListof (CPair CNode/Expr CMatrix)) Bool))
                   (λ (decls)
                     (if (null? decls)
                         (interpret-rec f universe relations
