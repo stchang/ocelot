@@ -15,7 +15,7 @@
  ^ *
  none univ iden
  in =
- && || and or => ! not
+ && || => ! not
  all some no
  one lone
  unary-op?
