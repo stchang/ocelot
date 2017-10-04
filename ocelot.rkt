@@ -6,6 +6,7 @@
 
 (provide
  ; lang/ast.rkt
+ node/expr/constant
  Node/Expr CNode/Expr
  Node/Formula CNode/Formula
  declare-relation
