@@ -29,7 +29,7 @@ before_install:
 - raco pkg install --auto ~/typed-rosette
 
 install:
- - raco pkg install --deps search-auto
+ - raco pkg install -j 1 --deps search-auto
 
 script:
  - raco test -x -p ocelot
