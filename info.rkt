@@ -14,3 +14,6 @@
 (define pkg-desc "A solver for relational logic")
 (define version "0.0.1")
 (define pkg-authors '(james))
+
+(define test-omit-paths
+  '("test/symbolic-test.rkt"))
